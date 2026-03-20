@@ -19,7 +19,7 @@ function buildAuthOptions(): any {
   const GoogleProvider     = require('next-auth/providers/google').default;
   const AppleProvider      = require('next-auth/providers/apple').default;
   const CredentialsProvider = require('next-auth/providers/credentials').default;
-  const { PrismaAdapter }  = require('@auth/prisma-adapter');
+  const { PrismaAdapter }  = require('@auth/prisma-adapter/index');
   const { compare }        = require('bcryptjs');
   const { z }              = require('zod');
   const { prisma }         = require('./prisma');
