@@ -1,11 +1,11 @@
 // backend-additions/src/app/api/mobile/push-token/route.ts
 // Store and remove Expo push tokens for server-side push delivery. — Arkiol Mobile V2
 
-import { dbUnavailable } from "../../../lib/error-handling";
+import { dbUnavailable } from "../../../../lib/error-handling";
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../lib/prisma';
-import { getMobileUser } from '../../../lib/auth/mobileMiddleware';
+import { prisma } from '../../../../lib/prisma';
+import { getMobileUser } from '../../../../lib/auth/mobileMiddleware';
 
 export async function POST(req: NextRequest) {
   if (!detectCapabilities().database) return dbUnavailable();
