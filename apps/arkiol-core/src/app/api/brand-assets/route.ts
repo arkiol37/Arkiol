@@ -8,9 +8,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { detectCapabilities } from '@arkiol/shared';
-import { auth } from '../../lib/auth';
-import { prisma } from '../../lib/prisma';
-import { logger } from '../../lib/logger';
+import { auth } from '../../../lib/auth';
+import { prisma } from '../../../lib/prisma';
+import { logger } from '../../../lib/logger';
 import { dbUnavailable } from "../../../lib/error-handling";
 
 // ── GET — List brand assets ────────────────────────────────────────────────
