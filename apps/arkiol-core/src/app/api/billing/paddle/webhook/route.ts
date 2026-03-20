@@ -19,8 +19,6 @@ import { handlePaddleEvent, getEnv, getActiveBillingProvider } from '@arkiol/sha
 import { billingUnavailable } from "../../../../lib/error-handling";
 
 export const dynamic = 'force-dynamic';
-export const config  = { api: { bodyParser: false } };
-
 /**
  * Verify Paddle webhook signature (HMAC-SHA256).
  * Paddle sends: Paddle-Signature: ts=<timestamp>;h1=<hmac>
