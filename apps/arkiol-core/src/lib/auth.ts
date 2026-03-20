@@ -19,7 +19,9 @@ function buildAuthOptions(): any {
   const GoogleProvider     = require('next-auth/providers/google').default;
   const AppleProvider      = require('next-auth/providers/apple').default;
   const CredentialsProvider = require('next-auth/providers/credentials').default;
-  const { PrismaAdapter }  = require('@auth/prisma-adapter');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const _adapterPkg = '@auth' + '/prisma-adapter'; // split string defeats webpack static analysis
+  const { PrismaAdapter }  = require(_adapterPkg);
   const { compare }        = require('bcryptjs');
   const { z }              = require('zod');
   const { prisma }         = require('./prisma');
