@@ -12,8 +12,6 @@ import { handleStripeEvent, getEnv, getActiveBillingProvider } from '@arkiol/sha
 import { billingUnavailable } from "../../../../lib/error-handling";
 
 export const dynamic = 'force-dynamic';
-export const config  = { api: { bodyParser: false } };
-
 function getStripe(): Stripe {
   const key = getEnv().STRIPE_SECRET_KEY;
   return new Stripe(key, { apiVersion: '2024-04-10', typescript: true });
