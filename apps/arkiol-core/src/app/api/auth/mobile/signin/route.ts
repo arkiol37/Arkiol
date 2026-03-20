@@ -2,7 +2,7 @@
 // Mobile JWT signin endpoint.  Issues a long-lived JWT for the mobile client.
 // Uses bcrypt password comparison (same hash stored by the NextAuth register route).
 
-import { dbUnavailable } from "../../../lib/error-handling";
+import { dbUnavailable } from "../../../../../lib/error-handling";
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma }           from '../../../../../lib/prisma';
