@@ -63,11 +63,11 @@ const CreateWebhookSchema = z.object({
 });
 
 const UpdateWebhookSchema = z.object({
-  url?:      z.string().url().startsWith("https://").max(2000).optional(),
-  events?:   z.array(z.enum(SUPPORTED_EVENTS)).min(1).max(SUPPORTED_EVENTS.length).optional(),
-  label?:    z.string().max(200).optional(),
-  isActive?: z.boolean().optional(),
-});
+  url:      z.string().url().startsWith("https://").max(2000).optional(),
+  events:   z.array(z.enum(SUPPORTED_EVENTS)).min(1).max(SUPPORTED_EVENTS.length).optional(),
+  label:    z.string().max(200).optional(),
+  isActive: z.boolean().optional(),
+}).partial();
 
 // ── Helper: resolve orgId and plan ────────────────────────────────────────────
 
