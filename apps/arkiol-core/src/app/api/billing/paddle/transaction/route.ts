@@ -9,11 +9,11 @@ import 'server-only';
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions }      from '../../../../lib/auth';
-import { prisma }           from '../../../../lib/prisma';
-import { rateLimit }        from '../../../../lib/rate-limit';
+import { authOptions }      from '../../../../../lib/auth';
+import { prisma }           from '../../../../../lib/prisma';
+import { rateLimit }        from '../../../../../lib/rate-limit';
 import { z }                from 'zod';
-import { billingUnavailable } from "../../../../lib/error-handling";
+import { billingUnavailable } from "../../../../../lib/error-handling";
 import {
   PLANS, PlanKey,
   getActiveBillingProvider,
