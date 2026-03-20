@@ -1,0 +1,57 @@
+{
+  "framework": "nextjs",
+  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "apps/arkiol-core/.next",
+  "env": {
+    "SKIP_DB_MIGRATE": "true"
+  },
+  "functions": {
+    "apps/arkiol-core/src/app/api/generate/route.ts": {
+      "maxDuration": 30,
+      "memory": 512
+    },
+    "apps/arkiol-core/src/app/api/export/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "apps/arkiol-core/src/app/api/campaigns/route.ts": {
+      "maxDuration": 15,
+      "memory": 256
+    },
+    "apps/arkiol-core/src/app/api/assets/route.ts": {
+      "maxDuration": 30,
+      "memory": 512
+    },
+    "apps/arkiol-core/src/app/api/health/route.ts": {
+      "maxDuration": 10,
+      "memory": 128
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/health",
+      "destination": "/api/health"
+    }
+  ],
+  "crons": []
+}
