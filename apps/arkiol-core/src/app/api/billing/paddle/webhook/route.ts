@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '../../../../../lib/prisma';
 import { handlePaddleEvent, getEnv, getActiveBillingProvider } from '@arkiol/shared';
-import { billingUnavailable } from "../../../../lib/error-handling";
+import { billingUnavailable } from "../../../../../lib/error-handling";
 
 export const dynamic = 'force-dynamic';
 /**
