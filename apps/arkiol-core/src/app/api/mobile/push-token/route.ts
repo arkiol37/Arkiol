@@ -4,8 +4,8 @@
 import { dbUnavailable } from "../../../lib/error-handling";
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getMobileUser } from '@/lib/auth/mobileMiddleware';
+import { prisma } from '../../../lib/prisma';
+import { getMobileUser } from '../../../lib/auth/mobileMiddleware';
 
 export async function POST(req: NextRequest) {
   if (!detectCapabilities().database) return dbUnavailable();
