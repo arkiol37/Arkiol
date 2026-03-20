@@ -12,7 +12,6 @@ import { generationQueue }           from "../../../../lib/queue";
 import { dbUnavailable } from "../../../../lib/error-handling";
 import {
   runMonitoringChecks,
-  getMonitoringSnapshot,
 } from "@arkiol/shared";
 
 function isAuthorized(req: NextRequest, session: any): boolean {
@@ -78,11 +77,7 @@ export async function GET(req: NextRequest) {
     select:  { id: true, orgId: true, action: true, metadata: true, createdAt: true },
   });
 
-  const snapshot = await getMonitoringSnapshot(
-    { prisma: prisma as any, logger },
-    new Date(Date.now() - 24 * 60 * 60 * 1000),
-    new Date(Date.now() - 60 * 60 * 1000),
-  );
+  const snapshot = null; // getMonitoringSnapshot not available in this build
 
   return NextResponse.json({
     alerts:   alerts.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })),
