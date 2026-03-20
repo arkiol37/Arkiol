@@ -187,7 +187,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
 // ── PATCH /api/webhooks/[id] — update a webhook ───────────────────────────────
 
- params }: { params: { id: string } }): Promise<NextResponse> {
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }): Promise<NextResponse> {
   if (!detectCapabilities().database) return dbUnavailable();
 
   return withErrorHandling(async () => {
@@ -234,7 +234,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
 // ── DELETE /api/webhooks/[id] — delete a webhook ─────────────────────────────
 
- params }: { params: { id: string } }): Promise<NextResponse> {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }): Promise<NextResponse> {
   if (!detectCapabilities().database) return dbUnavailable();
 
   return withErrorHandling(async () => {
