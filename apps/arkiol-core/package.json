@@ -2,7 +2,7 @@
   "name": "@arkiol/core",
   "version": "3.0.0",
   "private": true,
-  "description": "ARKIOL v3 \u2014 Core Design Platform",
+  "description": "ARKIOL v3 — Core Design Platform",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate --schema=../../packages/shared/prisma/schema.prisma && next build",
@@ -25,7 +25,7 @@
     "verify:fonts": "tsx scripts/verify-fonts.ts",
     "test:e2e": "jest --testPathPattern=e2e-pipeline --forceExit",
     "test:integration": "jest --testPathPattern=(api-generate|api-export) --forceExit",
-    "vercel-build": "prisma generate --schema=../../packages/shared/prisma/schema.prisma && (prisma migrate deploy --schema=../../packages/shared/prisma/schema.prisma || echo '[warn] prisma migrate deploy had issues \u2014 check DB or run supabase-schema.sql') && next build",
+    "vercel-build": "prisma generate --schema=../../packages/shared/prisma/schema.prisma && next build",
     "test:unit": "jest --testPathPattern=__tests__ --passWithNoTests --forceExit"
   },
   "prisma": {
