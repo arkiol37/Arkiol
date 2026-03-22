@@ -25,8 +25,17 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // DATABASE_URL  → Supabase pooled endpoint (port 6543, ?pgbouncer=true)
+  //   Used for all runtime queries. The pgbouncer=true param switches Prisma
+  //   to unnamed prepared statements so PgBouncer transaction-pooling mode
+  //   never hits PostgresError 42P05 "prepared statement already exists".
+  // DIRECT_URL    → Supabase direct endpoint (port 5432, no pgbouncer)
+  //   Used only by `prisma migrate deploy` and `prisma db push`.
+  //   PgBouncer transaction mode does not support the multi-statement
+  //   transactions those commands use, so they must bypass the pooler.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
