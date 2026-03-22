@@ -26,7 +26,8 @@
     "test:e2e": "jest --testPathPattern=e2e-pipeline --forceExit",
     "test:integration": "jest --testPathPattern=(api-generate|api-export) --forceExit",
     "vercel-build": "prisma generate --schema=../../packages/shared/prisma/schema.prisma && next build",
-    "test:unit": "jest --testPathPattern=__tests__ --passWithNoTests --forceExit"
+    "test:unit": "jest --testPathPattern=__tests__ --passWithNoTests --forceExit",
+    "db:generate": "prisma generate --schema=../../packages/shared/prisma/schema.prisma"
   },
   "prisma": {
     "schema": "../../packages/shared/prisma/schema.prisma",
