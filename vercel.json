@@ -4,7 +4,6 @@
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "apps/arkiol-core/.next",
   "env": {
-    "SKIP_DB_MIGRATE": "true",
     "NEXTAUTH_URL": "https://arkiol1.vercel.app",
     "NEXT_PUBLIC_APP_URL": "https://arkiol1.vercel.app"
   },
