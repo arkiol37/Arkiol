@@ -28,7 +28,7 @@ import {
 import { z } from "zod";
 
 // Vercel route config — replaces vercel.json functions block
-export const maxDuration = 30;
+export const maxDuration = 10;
 
 
 const COST_PER_CREDIT_USD     = 0.008;
