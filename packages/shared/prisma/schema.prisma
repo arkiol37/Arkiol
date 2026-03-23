@@ -21,19 +21,27 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // driverAdapters enables the pg-adapter path, which uses node-postgres
+  // (pg) instead of Prisma's built-in Rust connection pool. The pg driver
+  // does NOT use named prepared statements in pool mode, which permanently
+  // eliminates PostgresError 42P05 "prepared statement already exists" that
+  // occurs when Supabase PgBouncer (transaction mode) reassigns a physical
+  // backend connection to a different Vercel Lambda instance.
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
   provider  = "postgresql"
-  // DATABASE_URL  → Supabase pooled endpoint (port 6543, ?pgbouncer=true)
-  //   Used for all runtime queries. The pgbouncer=true param switches Prisma
-  //   to unnamed prepared statements so PgBouncer transaction-pooling mode
-  //   never hits PostgresError 42P05 "prepared statement already exists".
-  // DIRECT_URL    → Supabase direct endpoint (port 5432, no pgbouncer)
-  //   Used only by `prisma migrate deploy` and `prisma db push`.
-  //   PgBouncer transaction mode does not support the multi-statement
-  //   transactions those commands use, so they must bypass the pooler.
+  // DATABASE_URL  → Supabase POOLED endpoint (port 6543)
+  //   Used for all runtime queries via the pg driver adapter.
+  //   No pgbouncer=true needed here — the pg adapter bypasses Prisma's
+  //   internal Rust connection pool entirely, so prepared statement
+  //   collisions cannot occur regardless of pooler mode.
+  // DIRECT_URL    → Supabase DIRECT endpoint (port 5432)
+  //   Used only by prisma migrate deploy / prisma db push.
+  //   Must bypass PgBouncer because those commands use multi-statement
+  //   transactions incompatible with PgBouncer transaction mode.
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
