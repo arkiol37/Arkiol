@@ -192,10 +192,10 @@ export async function POST(req: NextRequest) {
     // Derive base URL from the request itself so it works on any deployment.
     // Falls back to configured env var, then the request's own origin/host.
     const configuredUrl = getEnv().NEXT_PUBLIC_APP_URL || getEnv().NEXTAUTH_URL;
-    const requestOrigin = req.headers.get('origin') ?? `https://${req.headers.get('host') ?? 'arkiol1.vercel.app'}`;
-    const baseUrl = (configuredUrl && !configuredUrl.includes('app.arkiol.com'))
-      ? configuredUrl
-      : requestOrigin;
+    const requestOrigin = req.headers.get('origin') ?? `https://${req.headers.get('host') ?? ''}`;
+    // Use the explicitly configured URL if available; fall back to the
+    // request's own origin so this works on preview deployments too.
+    const baseUrl = configuredUrl || requestOrigin;
 
     // Ensure Stripe customer exists
     let stripeCustomerId = org.stripeCustomerId ?? undefined;
