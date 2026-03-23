@@ -357,7 +357,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       return generationQueue.add(
         "generate",
         { ...(item as object), jobId, orgId, userId: user.id, batchId },
-            orgId: orgId,
         {
           jobId,
           priority:  queuePriority,
