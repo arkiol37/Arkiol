@@ -250,6 +250,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         type:        "GENERATE_ASSETS",
         status:      "PENDING",
         userId:      user.id,
+        orgId,
+        creditCost,
         campaignId:  input.campaignId ?? null,
         progress:    0,
         maxAttempts: 3,
