@@ -9,7 +9,7 @@ import { ApiError } from "../../../lib/types";
 import { z }        from "zod";
 
 // Vercel route config — replaces vercel.json functions block
-export const maxDuration = 30;
+export const maxDuration = 10;
 
 
 // ── GET /api/assets ────────────────────────────────────────────────────────
