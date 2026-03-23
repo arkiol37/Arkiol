@@ -119,6 +119,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         type:       "GENERATE_ASSETS",
         status:     "PENDING",
         userId:     user.id,
+            orgId: dbUser.org.id,
         campaignId: campaign.id,
         payload:    { ...input, campaignId: campaign.id } as any,
       },
