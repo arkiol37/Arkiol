@@ -1,92 +1,144 @@
 // src/lib/prisma.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Serverless-safe Prisma singleton for Vercel + Supabase (PgBouncer).
+// Prisma client for Vercel serverless + Supabase (PgBouncer transaction mode).
 //
-// ROOT CAUSE OF 42P05 "prepared statement already exists":
-//   Supabase uses PgBouncer in transaction-pooling mode by default. In this
-//   mode, physical backend connections are shared across logical clients.
-//   Prisma's default behaviour caches prepared statements by name ("s0", "s1"
-//   …). When a new Vercel Lambda cold-starts and its PrismaClient tries to
-//   PREPARE a statement that a previous Lambda already prepared on the same
-//   physical backend connection, PostgreSQL throws 42P05.
+// WHY pgbouncer=true IN DATABASE_URL IS NOT ENOUGH
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma 5 with its default library (Rust) engine maintains an internal
+// connection pool. Even with pgbouncer=true in the URL (which switches Prisma
+// to unnamed prepared statements), the Rust pool keeps logical connection
+// state across transactions. When PgBouncer transaction mode releases the
+// physical backend between transactions and later reassigns a *different*
+// backend to the same logical connection, Prisma's internal state is out of
+// sync with the new backend — the backend has no knowledge of any prepared
+// statements, named or unnamed, from prior transactions on other backends.
+// Subsequent queries that Prisma issues using the extended query protocol
+// (even with unnamed statements) can still trigger 42P05 because Prisma's
+// pool assumes connection continuity that PgBouncer does not guarantee.
 //
-// THE FIX — two complementary parts:
-//   1. DATABASE_URL must point to Supabase's POOLED endpoint (port 6543) and
-//      include `?pgbouncer=true`. This flag tells the Prisma query engine to
-//      use unnamed prepared statements (each query is prepared, executed, and
-//      immediately deallocated — never cached by name).
-//   2. schema.prisma datasource gets `directUrl = env("DIRECT_URL")` pointing
-//      to port 5432 (non-pooled). Prisma uses directUrl only for migrations,
-//      which require multi-statement transactions incompatible with PgBouncer
-//      transaction mode.
+// THE DEFINITIVE FIX: @prisma/adapter-pg
+// ─────────────────────────────────────────────────────────────────────────────
+// The pg (node-postgres) driver adapter completely replaces Prisma's internal
+// Rust connection pool with node-postgres Pool. The pg driver:
+//   1. Does NOT use named prepared statements in pool mode (no PREPARE/EXECUTE)
+//   2. Uses the simple query protocol — every query is a plain text SQL string
+//   3. Each connection checkout/release is fully managed by pg.Pool, which is
+//      transparent to PgBouncer — no hidden state across transactions
 //
-// SERVERLESS INSTANCE MANAGEMENT:
-//   In production (Vercel serverless) we create ONE PrismaClient per Lambda
-//   instance and never store it on globalThis — Lambda instances are single-
-//   request anyway and globalThis survives across warm invocations, which can
-//   accumulate idle connections. connection_limit=1 in DATABASE_URL prevents
-//   each Lambda from opening more connections than it needs.
-//   In development (Next.js hot-reload) we cache on globalThis to avoid
-//   exhausting the local Postgres connection limit across HMR cycles.
+// This means 42P05 is structurally impossible: no prepared statements are
+// ever sent to the PostgreSQL backend, regardless of how PgBouncer routes
+// physical connections.
+//
+// REQUIRED schema.prisma change (already applied):
+//   generator client {
+//     provider        = "prisma-client-js"
+//     previewFeatures = ["driverAdapters"]
+//   }
+//
+// REQUIRED env vars in Vercel Dashboard:
+//   DATABASE_URL  = postgresql://...@pooler.supabase.com:6543/postgres?sslmode=require
+//                   (Supabase Transaction pooler — port 6543, no pgbouncer= param needed)
+//   DIRECT_URL    = postgresql://...@db.[ref].supabase.co:5432/postgres?sslmode=require
+//                   (Supabase Direct connection — port 5432, for migrations only)
+//
+// CONNECTION LIMITS
+// ─────────────────────────────────────────────────────────────────────────────
+// Each Vercel Lambda (serverless function) gets its own Node.js process.
+// We configure pg.Pool with max:1 so each Lambda holds at most one physical
+// connection to PgBouncer. PgBouncer then manages the real PostgreSQL
+// connection pool on its side.
+//
+// SINGLETON PATTERN
+// ─────────────────────────────────────────────────────────────────────────────
+// Production:  module-scope singleton (_client). Vercel reuses warm Lambda
+//              instances across requests — the singleton is recreated only on
+//              cold starts, not on every request.
+// Development: globalThis singleton to survive Next.js HMR hot-reloads without
+//              exhausting local Postgres max_connections.
 // ─────────────────────────────────────────────────────────────────────────────
 import { detectCapabilities, bootstrapEnv } from '@arkiol/shared';
 
-const nodeEnv = bootstrapEnv('NODE_ENV');
-const isProduction = nodeEnv === 'production';
+const nodeEnv   = bootstrapEnv('NODE_ENV');
+const isProd    = nodeEnv === 'production';
 
-// Stub returned for every property when DATABASE_URL is absent.
-// Returns a rejected promise so callers get a clear error rather than a crash.
+// ── Stub for missing DATABASE_URL ────────────────────────────────────────────
+// Every property access returns a rejected promise so callers get a clear
+// error message rather than a cryptic "Cannot read property of undefined".
 const DB_NOT_CONFIGURED: any = new Proxy(
   (() => Promise.reject(new Error(
     'Database not configured. Add DATABASE_URL to your environment variables.'
   ))) as any,
-  { get: () => DB_NOT_CONFIGURED }
+  { get: () => DB_NOT_CONFIGURED },
 );
 
-function createPrismaClient() {
+// ── Client factory ───────────────────────────────────────────────────────────
+function createPrismaClient(): any | null {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.error('[prisma] DATABASE_URL is not set — cannot create PrismaClient');
+    return null;
+  }
+
   try {
-    const { PrismaClient } = require('@prisma/client');
-    // DATABASE_URL already contains ?pgbouncer=true&connection_limit=1
-    // (see .env.example). We pass it explicitly here so the Prisma engine
-    // always gets the correct URL regardless of how the module is loaded.
-    const client = new PrismaClient({
-      log: isProduction ? ['error'] : ['query', 'error', 'warn'],
+    // Dynamic requires so this module can be imported during `next build`
+    // without crashing when DATABASE_URL is absent (static analysis phase).
+    const { Pool }            = require('pg') as typeof import('pg');
+    const { PrismaPg }        = require('@prisma/adapter-pg') as typeof import('@prisma/adapter-pg');
+    const { PrismaClient }    = require('@prisma/client');
+
+    // pg.Pool with max:1 — one physical connection per Lambda to PgBouncer.
+    // ssl: true is required for Supabase connections.
+    // statement_timeout prevents runaway queries from blocking Lambda shutdown.
+    const pool = new Pool({
+      connectionString: url,
+      max: 1,
+      ssl: { rejectUnauthorized: false },
+      // Idle timeout shorter than Vercel's function timeout so PgBouncer
+      // can reclaim the connection before the Lambda is frozen.
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
     });
+
+    const adapter = new PrismaPg(pool);
+
+    const client = new PrismaClient({
+      adapter,
+      log: isProd ? ['error'] : ['query', 'error', 'warn'],
+    });
+
     return client;
   } catch (err: any) {
-    console.error('[prisma] Failed to instantiate PrismaClient:', err?.message ?? err);
+    console.error('[prisma] Failed to create PrismaClient with pg adapter:', err?.message ?? err);
     return null;
   }
 }
 
-// ── Singleton management ────────────────────────────────────────────────────
-// Production:  one client per module scope (per Lambda instance).
-//              Never cached on globalThis — prevents connection accumulation
-//              across warm Lambda re-uses.
-// Development: cached on globalThis to survive Next.js HMR hot-reloads.
-//              Without this, every file change creates a new PrismaClient
-//              and quickly exhausts local Postgres max_connections.
-
+// ── Singleton management ─────────────────────────────────────────────────────
 const globalForPrisma = globalThis as unknown as { __prisma?: any };
 let _client: any = null;
 
-function getClient(): any {
+function getClient(): any | null {
   if (!detectCapabilities().database) return null;
 
-  if (isProduction) {
+  if (isProd) {
+    // Serverless: one client per module scope (per cold-start Lambda).
+    // NOT stored on globalThis in production — prevents cross-request
+    // connection accumulation in edge cases where globalThis persists
+    // longer than expected.
     if (!_client) _client = createPrismaClient();
     return _client;
   }
 
-  // Development only
+  // Development: survive Next.js HMR hot-reloads via globalThis cache.
   if (!globalForPrisma.__prisma) {
     globalForPrisma.__prisma = createPrismaClient();
   }
   return globalForPrisma.__prisma;
 }
 
-// Export a lazy proxy so importing this module never throws even if
-// DATABASE_URL is missing (e.g., during `next build` static analysis).
+// ── Export ───────────────────────────────────────────────────────────────────
+// Lazy proxy: importing this file never throws, even when DATABASE_URL is
+// absent during Next.js build-time static analysis.
 export const prisma: any = new Proxy({} as any, {
   get(_target, prop) {
     const client = getClient();
