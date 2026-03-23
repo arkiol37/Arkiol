@@ -25,7 +25,7 @@ import { prisma }                            from "../../../../lib/prisma";
 import { getRequestUser, requirePermission } from "../../../../lib/auth";
 import { rateLimit, rateLimitHeaders }       from "../../../../lib/rate-limit";
 import { generationQueue }                   from "../../../../lib/queue";
-import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable }                 from "../../../../lib/error-handling";
+import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable } from "../../../../lib/error-handling";
 import { ApiError, getCreditCost, GIF_ELIGIBLE_FORMATS } from "../../../../lib/types";
 import { assertBatchAllowed, countOrgRunningJobs, loadOrgSnapshot } from "../../../../lib/planGate";
 import { buildCampaignPlan, campaignFormatToGenerationPayload } from "../../../../engines/campaign/creative-director";
@@ -251,8 +251,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
     const { createdJobs } = await prisma.$transaction(async (tx) => {
       await concurrencyEnforcer.assertWithinLimit(tx as any, {
-        orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
-            orgId: orgId,
+        orgId,
+        userId: user.id,
+        maxConcurrency: orgLimit.maxConcurrency,
       });
 
       await (tx as any).batchJob.create({
@@ -260,7 +261,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           id:             batchId,
           orgId,
           userId:         user.id,
-            orgId: orgId,
           status:         "PENDING",
           totalJobs:      pack.formats.length,
           completedJobs:  0,
@@ -283,7 +283,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             type:        "GENERATE_ASSETS",
             status:      "PENDING",
             userId:      user.id,
-            orgId: orgId,
+            orgId,
+            creditCost:  getCreditCost(format, false) * variations,
             campaignId:  campaignPlan.campaignId,
             progress:    0,
             maxAttempts: 3,
@@ -361,8 +362,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       const job = await prisma.$transaction(async (tx) => {
         if (idx === 0) {
           await concurrencyEnforcer.assertWithinLimit(tx as any, {
-            orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
-            orgId: orgId,
+            orgId,
+            userId: user.id,
+            maxConcurrency: orgLimit.maxConcurrency,
           });
         }
         return tx.job.create({
@@ -370,7 +372,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             type:        "GENERATE_ASSETS",
             status:      "PENDING",
             userId:      user.id,
-            orgId: orgId,
+            orgId,
+            creditCost:  getCreditCost(format, false) * variations,
             campaignId:  campaignPlan.campaignId,
             progress:    0,
             maxAttempts: 3,
@@ -391,7 +394,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       await generationQueue.add(
         "generate",
         { jobId: job.id, orgId, userId: user.id, formats: [format], variations, prompt: localeAugmentedPrompt, locale },
-            orgId: orgId,
         {
           jobId:    job.id,
           priority: planConfig.queuePriority,
