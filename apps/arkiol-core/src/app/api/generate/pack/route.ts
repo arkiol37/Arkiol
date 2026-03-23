@@ -252,6 +252,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     const { createdJobs } = await prisma.$transaction(async (tx) => {
       await concurrencyEnforcer.assertWithinLimit(tx as any, {
         orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
+            orgId: orgId,
       });
 
       await (tx as any).batchJob.create({
@@ -259,6 +260,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           id:             batchId,
           orgId,
           userId:         user.id,
+            orgId: orgId,
           status:         "PENDING",
           totalJobs:      pack.formats.length,
           completedJobs:  0,
@@ -281,6 +283,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             type:        "GENERATE_ASSETS",
             status:      "PENDING",
             userId:      user.id,
+            orgId: orgId,
             campaignId:  campaignPlan.campaignId,
             progress:    0,
             maxAttempts: 3,
@@ -314,6 +317,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         generationQueue.add(
           "generate",
           { jobId, orgId, userId: user.id, batchId, formats: [format], variations, prompt: localeAugmentedPrompt, locale },
+            orgId: orgId,
           {
             jobId,
             priority:  planConfig.queuePriority,
@@ -359,6 +363,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         if (idx === 0) {
           await concurrencyEnforcer.assertWithinLimit(tx as any, {
             orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
+            orgId: orgId,
           });
         }
         return tx.job.create({
@@ -366,6 +371,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             type:        "GENERATE_ASSETS",
             status:      "PENDING",
             userId:      user.id,
+            orgId: orgId,
             campaignId:  campaignPlan.campaignId,
             progress:    0,
             maxAttempts: 3,
@@ -386,6 +392,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       await generationQueue.add(
         "generate",
         { jobId: job.id, orgId, userId: user.id, formats: [format], variations, prompt: localeAugmentedPrompt, locale },
+            orgId: orgId,
         {
           jobId:    job.id,
           priority: planConfig.queuePriority,
