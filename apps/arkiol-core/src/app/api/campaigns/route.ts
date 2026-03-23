@@ -10,7 +10,7 @@ import { ApiError }          from "../../../lib/types";
 import { z }                 from "zod";
 
 // Vercel route config — replaces vercel.json functions block
-export const maxDuration = 15;
+export const maxDuration = 10;
 
 
 const CreateCampaignSchema = z.object({
