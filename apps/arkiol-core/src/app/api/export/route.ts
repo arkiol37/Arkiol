@@ -23,7 +23,7 @@ import { checkZipExport, checkGifAccess, preflightJob,
          createExportIdempotencyGuard } from "@arkiol/shared";
 
 // Vercel route config — replaces vercel.json functions block
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 
 const ExportSchema = z.object({
