@@ -1,15 +1,17 @@
 // src/app/api/admin/schema-init/route.ts
-// Runs prisma migrate deploy on demand. Requires BOOTSTRAP_SECRET.
-// Use after first deploying to Vercel when the DB has no tables yet.
+// Admin endpoint to verify database connectivity and table presence.
 //
-// Usage:
-//   curl -X POST https://arkiol1.vercel.app/api/admin/schema-init \
-//     -H "Content-Type: application/json" \
-//     -d '{"secret":"<BOOTSTRAP_SECRET>"}'
+// NOTE: `prisma migrate deploy` CANNOT run on Vercel serverless — there is no
+// Prisma CLI binary on the Lambda filesystem and it is read-only. Migrations
+// must be run from a local machine or CI:
+//   npx prisma migrate deploy --schema=packages/shared/prisma/schema.prisma
+//
+// This endpoint now serves as a DB health/status check instead.
+// Requires BOOTSTRAP_SECRET (min 32 chars) in env.
 import { NextRequest, NextResponse } from 'next/server';
 
-export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const dynamic     = 'force-dynamic';
+export const maxDuration = 10; // Vercel Hobby plan maximum
 
 export async function POST(req: NextRequest) {
   const bootstrapSecret = process.env.BOOTSTRAP_SECRET ?? '';
@@ -37,40 +39,26 @@ export async function POST(req: NextRequest) {
 
   const results: string[] = [];
 
-  // Run migrate deploy
-  try {
-    const { execSync } = await import('child_process');
-    const out = execSync(
-      'npx prisma migrate deploy --schema=../../packages/shared/prisma/schema.prisma',
-      {
-        cwd: process.cwd(),
-        timeout: 55_000,
-        encoding: 'utf8',
-        env: { ...process.env },
-      }
-    );
-    results.push('✓ migrate deploy: ' + (out?.trim()?.slice(0, 400) || 'ok'));
-  } catch (err: any) {
-    results.push('migrate deploy: ' + (err?.message ?? String(err)).slice(0, 500));
-  }
-
-  // Verify User table
+  // Verify DB connectivity via Prisma model (uses @@map snake_case table names)
   try {
     const { prisma } = await import('../../../../lib/prisma');
-    const rows: any[] = await (prisma as any).$queryRaw`SELECT COUNT(*)::int as n FROM "User"`;
-    results.push(`✓ User table: ${rows[0]?.n ?? 0} rows`);
+    const userCount = await prisma.user.count();
+    results.push(`✓ user table: ${userCount} rows`);
   } catch (err: any) {
-    results.push('✗ User table error: ' + err?.message?.slice(0, 200));
+    results.push('✗ user table error: ' + err?.message?.slice(0, 200));
   }
 
-  // Verify Org table
   try {
     const { prisma } = await import('../../../../lib/prisma');
-    const rows: any[] = await (prisma as any).$queryRaw`SELECT COUNT(*)::int as n FROM "Org"`;
-    results.push(`✓ Org table: ${rows[0]?.n ?? 0} rows`);
+    const orgCount = await prisma.org.count();
+    results.push(`✓ org table: ${orgCount} rows`);
   } catch (err: any) {
-    results.push('✗ Org table error: ' + err?.message?.slice(0, 200));
+    results.push('✗ org table error: ' + err?.message?.slice(0, 200));
   }
+
+  results.push(
+    'ℹ️  To run migrations: npx prisma migrate deploy --schema=packages/shared/prisma/schema.prisma'
+  );
 
   return NextResponse.json({ ok: true, results, timestamp: new Date().toISOString() });
 }
