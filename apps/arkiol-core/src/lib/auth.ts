@@ -334,14 +334,14 @@ export async function createAuditLog(opts: { userId: string; orgId: string; acti
     const { prisma } = require('./prisma');
     await prisma.auditLog.create({
       data: {
-        userId:       opts.userId,
-        orgId:        opts.orgId,
-        action:       opts.action,
-        resourceType: opts.resourceType,
-        resourceId:   opts.resourceId,
-        metadata:     opts.metadata ? JSON.stringify(opts.metadata) : undefined,
-        ipAddress:    opts.req?.headers.get('x-forwarded-for') ?? opts.req?.headers.get('x-real-ip'),
-        userAgent:    opts.req?.headers.get('user-agent'),
+        // Schema fields: actorId (not userId), targetType (not resourceType), targetId (not resourceId)
+        // ipAddress and userAgent are not in the AuditLog schema — omitted
+        actorId:    opts.userId,
+        orgId:      opts.orgId,
+        action:     opts.action,
+        targetType: opts.resourceType,
+        targetId:   opts.resourceId,
+        metadata:   opts.metadata ?? {},
       },
     });
   } catch { /* non-fatal */ }
