@@ -26,8 +26,7 @@
     "test:e2e": "jest --testPathPattern=e2e-pipeline --forceExit",
     "test:integration": "jest --testPathPattern=(api-generate|api-export) --forceExit",
     "vercel-build": "prisma generate --schema=../../packages/shared/prisma/schema.prisma && next build",
-    "test:unit": "jest --testPathPattern=__tests__ --passWithNoTests --forceExit",
-    "db:generate": "prisma generate --schema=../../packages/shared/prisma/schema.prisma"
+    "test:unit": "jest --testPathPattern=__tests__ --passWithNoTests --forceExit"
   },
   "prisma": {
     "schema": "../../packages/shared/prisma/schema.prisma",
@@ -61,7 +60,9 @@
     "server-only": "^0.0.1",
     "sharp": "^0.33.4",
     "stripe": "^15.7.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "pg": "^8.12.0",
+    "@prisma/adapter-pg": "^5.16.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
@@ -79,7 +80,8 @@
     "@typescript-eslint/eslint-plugin": "^7.16.1",
     "@typescript-eslint/parser": "^7.16.1",
     "eslint-config-next": "14.2.5",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "@types/pg": "^8.11.5"
   },
   "engines": {
     "node": "20.x",
