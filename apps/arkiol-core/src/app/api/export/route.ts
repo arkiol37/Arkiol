@@ -70,6 +70,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // Verify all assets belong to this user
   const assets = await prisma.asset.findMany({
     where: { id: { in: assetIds }, userId: user.id },
+            orgId: dbUser.org.id,
   });
   if (assets.length !== assetIds.length) {
     throw new ApiError(404, "One or more assets not found or access denied");
@@ -178,6 +179,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         type:        "EXPORT_BUNDLE",
         status:      "PENDING",
         userId:      user.id,
+            orgId: dbUser.org.id,
         progress:    0,
         maxAttempts: 3,
         payload: {
@@ -240,6 +242,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         type:        "EXPORT_BUNDLE",
         status:      "PENDING",
         userId:      user.id,
+            orgId: dbUser.org.id,
         progress:    0,
         maxAttempts: 3,
         payload: {
