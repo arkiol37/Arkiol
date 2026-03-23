@@ -9,6 +9,10 @@
 // the same DATABASE_URL.
 
 import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+// @ts-ignore — @prisma/adapter-pg may not be in animation-studio deps yet
+let PrismaPg: any = null;
+try { PrismaPg = require('@prisma/adapter-pg').PrismaPg; } catch {}
 import {
   createCreditService,
   InsufficientCreditsError,
@@ -29,10 +33,21 @@ import { config } from '../config/env';
 let _prisma: PrismaClient | null = null;
 function getSharedPrisma(): PrismaClient {
   if (!_prisma) {
-    _prisma = new PrismaClient({
-      datasources: { db: { url: config.DATABASE_URL } },
-      log: ['error'],
-    });
+    // Use pg adapter if available to avoid 42P05 prepared-statement collisions
+    // when DATABASE_URL points to Supabase PgBouncer (transaction mode).
+    if (PrismaPg && config.DATABASE_URL) {
+      const pool = new Pool({
+        connectionString: config.DATABASE_URL,
+        max: 2,
+        ssl: config.DATABASE_URL.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+      });
+      _prisma = new PrismaClient({ adapter: new PrismaPg(pool), log: ['error'] } as any);
+    } else {
+      _prisma = new PrismaClient({
+        datasources: { db: { url: config.DATABASE_URL } },
+        log: ['error'],
+      });
+    }
   }
   return _prisma;
 }
