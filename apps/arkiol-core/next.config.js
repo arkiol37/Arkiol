@@ -61,7 +61,7 @@ const nextConfig = {
   },
 
   experimental: {
-    serverComponentsExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq', '@auth/prisma-adapter', 'next-auth', '@prisma/client', 'bcryptjs', '@opentelemetry/instrumentation', 'require-in-the-middle'],
+    serverComponentsExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq', '@auth/prisma-adapter', 'next-auth', '@prisma/client', '@prisma/adapter-pg', 'pg', 'pg-pool', 'bcryptjs', '@opentelemetry/instrumentation', 'require-in-the-middle'],
   },
 
   webpack: (config, { isServer }) => {
@@ -72,6 +72,10 @@ const nextConfig = {
         // Prevent webpack from bundling these server-only packages.
         // They use dynamic requires or ESM-only exports that confuse the bundler.
         '@auth/prisma-adapter',
+        '@prisma/adapter-pg',
+        'pg',
+        'pg-pool',
+        'pg-native',
         '@opentelemetry/instrumentation',
         'require-in-the-middle',
       ];
