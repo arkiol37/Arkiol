@@ -13,7 +13,8 @@ function notConfigured() {
 }
 
 async function handler(req: Request, ctx: any) {
-  if (!detectCapabilities().auth || !detectCapabilities().database) {
+  const caps = detectCapabilities();
+  if (!caps.auth || !caps.database) {
     return notConfigured();
   }
   try {
