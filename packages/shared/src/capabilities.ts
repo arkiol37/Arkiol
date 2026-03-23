@@ -2,16 +2,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // SINGLE SOURCE OF TRUTH — Capability detection for all services.
 //
-// Server usage (Node.js):
-//   import { detectCapabilities } from '@arkiol/shared';
-//   const caps = detectCapabilities();
-//   if (caps.database) { ... }
+// ── CACHING STRATEGY ────────────────────────────────────────────────────────
+// In Vercel serverless, module-level code runs at Lambda cold-start time,
+// BEFORE all environment variables are injected into process.env. Caching
+// detectCapabilities() results at that point permanently locks in stale false
+// values (database=false, auth=false, etc.) for the entire container lifetime,
+// causing every API route to return 503/dbUnavailable on every warm request.
 //
-// API endpoint (serialize for client):
-//   import { serializeCapabilities } from '@arkiol/shared';
-//   return NextResponse.json(serializeCapabilities());
-//
-// Client hook: useCapabilities() in src/hooks/useCapabilities.ts
+// Fix: NEVER cache in production. Each call reads process.env live — this is
+// a cheap synchronous object property lookup with zero I/O cost. In development
+// the result is cached once per process to avoid HMR noise.
 //
 // ── EDGE RUNTIME NOTE ───────────────────────────────────────────────────────
 // src/middleware.ts runs in Edge Runtime and cannot import this module (the
@@ -31,7 +31,7 @@ export interface ArkiolCapabilities {
   queue:         boolean;
   /** Upstash Redis rate limiting via UPSTASH_REDIS_REST_* */
   rateLimit:     boolean;
-  /** NextAuth authentication via NEXTAUTH_SECRET (≥32 chars) */
+  /** NextAuth authentication via NEXTAUTH_SECRET (>=32 chars) */
   auth:          boolean;
   /** Paddle billing via PADDLE_API_KEY + PADDLE_WEBHOOK_SECRET + PADDLE_CLIENT_TOKEN */
   paddleBilling: boolean;
@@ -43,7 +43,7 @@ export interface ArkiolCapabilities {
   email:         boolean;
   /** Webhook AES-256 encryption via WEBHOOK_SECRET_KEY (64 hex chars) */
   webhooks:      boolean;
-  /** Mobile JWT signing via MOBILE_JWT_SECRET (≥32 chars) */
+  /** Mobile JWT signing via MOBILE_JWT_SECRET (>=32 chars) */
   mobileAuth:    boolean;
   /** Sentry error tracking via SENTRY_DSN */
   sentry:        boolean;
@@ -51,57 +51,75 @@ export interface ArkiolCapabilities {
 
 /** Serialized form for the client — prefixed with 'has' for clarity */
 export interface SerializedCapabilities {
-  hasDatabase:   boolean;
-  hasAI:         boolean;
-  hasStorage:    boolean;
-  hasQueue:      boolean;
-  hasRateLimit:  boolean;
-  hasAuth:       boolean;
+  hasDatabase:      boolean;
+  hasAI:            boolean;
+  hasStorage:       boolean;
+  hasQueue:         boolean;
+  hasRateLimit:     boolean;
+  hasAuth:          boolean;
   hasPaddleBilling: boolean;
   hasStripeBilling: boolean;
-  hasBilling:    boolean;
-  hasEmail:      boolean;
-  hasWebhooks:   boolean;
-  hasMobileAuth: boolean;
-  hasSentry:     boolean;
+  hasBilling:       boolean;
+  hasEmail:         boolean;
+  hasWebhooks:      boolean;
+  hasMobileAuth:    boolean;
+  hasSentry:        boolean;
 }
 
-let _capabilities: ArkiolCapabilities | null = null;
+// Dev-only cache — never populated in production.
+let _devCache: ArkiolCapabilities | null = null;
 
-/** Detect which services are configured. Result is cached for the process lifetime. */
+/**
+ * Detect which services are configured.
+ *
+ * - Production / serverless: always reads live process.env — no caching.
+ *   This prevents stale false values from Lambda cold-start module evaluation.
+ * - Development: result is cached per process to avoid HMR noise.
+ */
 export function detectCapabilities(): ArkiolCapabilities {
-  if (_capabilities) return _capabilities;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // Return dev cache only in non-production environments
+  if (!isProduction && _devCache) return _devCache;
 
   const env = process.env;
 
-  _capabilities = {
+  const paddleBilling = !!(env.PADDLE_API_KEY && env.PADDLE_WEBHOOK_SECRET && env.PADDLE_CLIENT_TOKEN);
+  const stripeBilling = !!(
+    env.STRIPE_SECRET_KEY &&
+    (env.STRIPE_SECRET_KEY.startsWith('sk_live_') || env.STRIPE_SECRET_KEY.startsWith('sk_test_'))
+  );
+
+  const caps: ArkiolCapabilities = {
     database: !!(
       env.DATABASE_URL &&
       (env.DATABASE_URL.startsWith('postgresql://') || env.DATABASE_URL.startsWith('postgres://'))
     ),
-    ai: !!(env.OPENAI_API_KEY?.startsWith('sk-')),
-    storage: !!(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY && env.S3_BUCKET_NAME),
-    queue: !!(env.REDIS_HOST && env.REDIS_HOST.trim() !== ''),
-    rateLimit: !!(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN),
-    auth: !!(env.NEXTAUTH_SECRET && env.NEXTAUTH_SECRET.length >= 32),
-    paddleBilling: !!(env.PADDLE_API_KEY && env.PADDLE_WEBHOOK_SECRET && env.PADDLE_CLIENT_TOKEN),
-    stripeBilling: !!(
-      env.STRIPE_SECRET_KEY &&
-      (env.STRIPE_SECRET_KEY.startsWith('sk_live_') || env.STRIPE_SECRET_KEY.startsWith('sk_test_'))
-    ),
-    get billing() { return this.paddleBilling || this.stripeBilling; },
-    email: !!(env.SMTP_HOST),
-    webhooks: !!(env.WEBHOOK_SECRET_KEY && /^[0-9a-fA-F]{64}$/.test(env.WEBHOOK_SECRET_KEY)),
-    mobileAuth: !!(env.MOBILE_JWT_SECRET && env.MOBILE_JWT_SECRET.length >= 32),
-    sentry: !!(env.SENTRY_DSN),
+    ai:            !!(env.OPENAI_API_KEY?.startsWith('sk-')),
+    storage:       !!(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY && env.S3_BUCKET_NAME),
+    queue:         !!(env.REDIS_HOST && env.REDIS_HOST.trim() !== ''),
+    rateLimit:     !!(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN),
+    auth:          !!(env.NEXTAUTH_SECRET && env.NEXTAUTH_SECRET.length >= 32),
+    paddleBilling,
+    stripeBilling,
+    billing:       paddleBilling || stripeBilling,
+    email:         !!(env.SMTP_HOST),
+    webhooks:      !!(env.WEBHOOK_SECRET_KEY && /^[0-9a-fA-F]{64}$/.test(env.WEBHOOK_SECRET_KEY)),
+    mobileAuth:    !!(env.MOBILE_JWT_SECRET && env.MOBILE_JWT_SECRET.length >= 32),
+    sentry:        !!(env.SENTRY_DSN),
   };
 
-  return _capabilities;
+  // Only cache in development
+  if (!isProduction) {
+    _devCache = caps;
+  }
+
+  return caps;
 }
 
 /** Reset the capabilities cache (used in tests and for hot-reload scenarios). */
 export function resetCapabilities(): void {
-  _capabilities = null;
+  _devCache = null;
 }
 
 /**
