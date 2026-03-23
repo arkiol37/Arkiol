@@ -161,6 +161,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     const existing = await prisma.job.findMany({
       where: {
         userId:    user.id,
+            orgId: orgId,
         idempotencyKey: { in: idemKeys },
         createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       },
@@ -256,6 +257,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     await concurrencyEnforcer.assertWithinLimit(tx as any, {
       orgId,
       userId:         user.id,
+            orgId: orgId,
       maxConcurrency: orgLimit.maxConcurrency,
     });
 
@@ -265,6 +267,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         id:             batchId,
         orgId,
         userId:         user.id,
+            orgId: orgId,
         status:         "PENDING",
         totalJobs:      jobItems.length,  // includes pre-existing (already counted)
         completedJobs:  existingByKey.size,
@@ -303,6 +306,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           type:        "GENERATE_ASSETS",
           status:      "PENDING",
           userId:      user.id,
+            orgId: orgId,
           campaignId:  item.campaignId ?? null,
           progress:    0,
           maxAttempts: 3,
@@ -353,6 +357,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       return generationQueue.add(
         "generate",
         { ...(item as object), jobId, orgId, userId: user.id, batchId },
+            orgId: orgId,
         {
           jobId,
           priority:  queuePriority,
