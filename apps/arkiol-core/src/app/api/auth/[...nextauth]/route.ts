@@ -1,8 +1,5 @@
 // src/app/api/auth/[...nextauth]/route.ts
-// NextAuth v4 handler — App Router compatible.
-// Returns 503 only when auth env vars are genuinely absent.
-// All other errors return 500 with a log so they're visible in Vercel function logs.
-import { detectCapabilities } from '@arkiol/shared';
+// Safe NextAuth route — returns 503 when auth not configured.
 import { NextResponse } from 'next/server';
 
 function notConfigured() {
@@ -12,23 +9,35 @@ function notConfigured() {
   );
 }
 
-async function handler(req: Request, ctx: any) {
-  const caps = detectCapabilities();
-  if (!caps.auth || !caps.database) {
-    return notConfigured();
-  }
+function isAuthConfigured(): boolean {
+  return !!(
+    process.env.NEXTAUTH_SECRET &&
+    process.env.NEXTAUTH_SECRET.length >= 32 &&
+    process.env.DATABASE_URL &&
+    (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'))
+  );
+}
+
+export async function GET(req: Request, ctx: any) {
+  if (!isAuthConfigured()) return notConfigured();
   try {
     const { authOptions } = await import('../../../../lib/auth');
     const NextAuth        = (await import('next-auth')).default;
-    // next-auth v4 App Router: NextAuth returns a handler fn, call with (req, ctx)
     return NextAuth(authOptions)(req, ctx);
   } catch (err: any) {
-    console.error('[auth/nextauth] handler error:', err?.message ?? err);
-    return NextResponse.json(
-      { error: 'Authentication error', message: err?.message ?? 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('[nextauth] GET error:', err?.message);
+    return notConfigured();
   }
 }
 
-export { handler as GET, handler as POST };
+export async function POST(req: Request, ctx: any) {
+  if (!isAuthConfigured()) return notConfigured();
+  try {
+    const { authOptions } = await import('../../../../lib/auth');
+    const NextAuth        = (await import('next-auth')).default;
+    return NextAuth(authOptions)(req, ctx);
+  } catch (err: any) {
+    console.error('[nextauth] POST error:', err?.message);
+    return notConfigured();
+  }
+}
