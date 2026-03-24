@@ -18,13 +18,13 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 const FRIENDLY_ERRORS: Record<string, string> = {
-  CredentialsSignin: "Incorrect email or password.",
-  OAuthSignin:       "Could not connect to sign-in provider. Try again.",
-  OAuthCallback:     "Sign-in was interrupted. Please try again.",
-  OAuthAccountNotLinked: "This email is already registered with a different sign-in method.",
-  EmailCreateAccount: "Could not create account. Contact support.",
-  SessionRequired:   "Please sign in to continue.",
-  Default:           "Something went wrong. Please try again.",
+  CredentialsSignin:       "Incorrect email or password.",
+  OAuthSignin:             "Could not connect to sign-in provider. Try again.",
+  OAuthCallback:           "Sign-in was interrupted. Please try again.",
+  OAuthAccountNotLinked:   "This email is already registered with a different sign-in method.",
+  EmailCreateAccount:      "Could not create account. Contact support.",
+  SessionRequired:         "Please sign in to continue.",
+  Default:                 "Something went wrong. Please try again.",
 };
 
 export function LoginForm({ googleEnabled }: { googleEnabled: boolean }) {
@@ -45,15 +45,28 @@ export function LoginForm({ googleEnabled }: { googleEnabled: boolean }) {
     if (!password)        { setError("Please enter your password."); return; }
     setLoading(true); setError("");
     try {
+      // First check if the auth endpoint is actually up
+      const healthCheck = await fetch("/api/auth/providers").catch(() => null);
+      if (!healthCheck || !healthCheck.ok) {
+        setError("The authentication service is temporarily unavailable. Please try again in a moment.");
+        return;
+      }
+
       const { signIn } = await import("next-auth/react");
-      const result = await signIn("credentials", { email: email.trim().toLowerCase(), password, redirect: false });
+      const result = await signIn("credentials", {
+        email: email.trim().toLowerCase(),
+        password,
+        redirect: false,
+      });
+
       if (result?.error) {
         setError(FRIENDLY_ERRORS[result.error] ?? "Incorrect email or password. Please try again.");
       } else if (result?.ok) {
         router.push("/dashboard");
         router.refresh();
       } else {
-        setError("Sign-in is not configured. Please set NEXTAUTH_SECRET and DATABASE_URL.");
+        // result is null or ok=false with no error — server issue
+        setError("Sign-in failed. Please check your connection and try again.");
       }
     } catch {
       setError("A network error occurred. Please check your connection and try again.");
