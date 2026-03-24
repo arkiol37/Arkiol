@@ -21,7 +21,8 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -208,6 +209,7 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+  @@map("verification_token")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -333,6 +335,7 @@ model CreditTransaction {
   @@index([orgId, createdAt])
   @@index([orgId, type])
   @@index([refId])
+  @@map("credit_transaction")
 }
 
 model CreditPack {
@@ -344,6 +347,7 @@ model CreditPack {
   expiryDays    Int?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
+  @@map("credit_pack")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -365,6 +369,7 @@ model EditorDraft {
   @@index([userId, projectId])
   @@index([userId, type, projectId])
   @@index([projectId, orgId])
+  @@map("editor_draft")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -531,6 +536,7 @@ model StudioProject {
 
   @@index([orgId])
   @@index([orgId, deletedAt])
+  @@map("studio_project")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -553,6 +559,7 @@ model ApiKey {
 
   @@index([keyHash])
   @@index([userId])
+  @@map("api_key")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -590,6 +597,7 @@ model ContentPack {
   updatedAt DateTime @updatedAt
 
   @@index([orgId])
+  @@map("content_pack")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -632,6 +640,7 @@ model BillingEvent {
   @@index([orgId])
   @@index([type])
   @@index([processed, createdAt])
+  @@map("billing_event")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -652,6 +661,7 @@ model AuditLog {
   @@index([orgId, createdAt])
   @@index([actorId])
   @@index([action])
+  @@map("audit_log")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -677,6 +687,7 @@ model AIFeedbackEvent {
   @@index([orgId])
   @@index([eventType])
   @@index([occurredAt(sort: Desc)])
+  @@map("ai_feedback_event")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -727,6 +738,7 @@ model AIGeneratedAsset {
   @@index([orgId, campaignId])
   @@index([layoutFamily])
   @@index([stylePreset])
+  @@map("ai_generated_asset")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -750,6 +762,7 @@ model AlertLog {
   @@index([severity, firedAt(sort: Desc)])
   @@index([orgId, firedAt(sort: Desc)])
   @@index([alertType, firedAt(sort: Desc)])
+  @@map("alert_log")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -799,6 +812,7 @@ model AIBenchmarkRecord {
   @@index([routingMode])
   @@index([userSelected])
   @@index([overallScore])
+  @@map("ai_benchmark_record")
 }
 
 // Per-job aggregated benchmark summary
@@ -817,6 +831,7 @@ model AIJobSummary {
   completedAt       DateTime
 
   @@index([orgId, completedAt])
+  @@map("ai_job_summary")
 }
 
 // Rolling style performance per org (upserted on each render)
@@ -833,6 +848,7 @@ model AIStylePerformance {
 
   @@unique([orgId, stylePreset])
   @@index([orgId])
+  @@map("ai_style_performance")
 }
 
 // Rolling format performance per org (upserted on each render)
@@ -848,6 +864,7 @@ model AIFormatPerformance {
 
   @@unique([orgId, format])
   @@index([orgId])
+  @@map("ai_format_performance")
 }
 
 // A/B experiment results per org × experiment × variant
@@ -863,6 +880,7 @@ model AIABResult {
 
   @@unique([orgId, experimentName, variant])
   @@index([orgId, experimentName])
+  @@map("ai_ab_result")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -893,6 +911,7 @@ model AIJobMetadata {
 
   @@index([orgId, createdAt])
   @@index([overallScore])
+  @@map("ai_job_metadata")
 }
 
 // Per-stage per-asset execution record (append-only)
@@ -917,6 +936,7 @@ model AIStageTrace {
   @@index([assetId])
   @@index([orgId, stageId])
   @@index([fallback])
+  @@map("ai_stage_trace")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1138,6 +1158,7 @@ model BrandUploadedAsset {
   @@index([processingStatus])
   @@index([orgId, processingStatus])
   @@index([createdAt(sort: Desc)])
+  @@map("brand_uploaded_asset")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1155,6 +1176,7 @@ model MobilePushToken {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@map("mobile_push_token")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
