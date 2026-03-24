@@ -1052,7 +1052,7 @@ CREATE TABLE IF NOT EXISTS "MobilePushToken" (
 );
 CREATE INDEX IF NOT EXISTS "MobilePushToken_userId_idx" ON "MobilePushToken"("userId");
 
-CREATE TABLE IF NOT EXISTS "engine_registrations" (
+CREATE TABLE IF NOT EXISTS "EngineRegistration" (
   "id"               TEXT    NOT NULL DEFAULT gen_random_uuid()::text,
   "name"             TEXT    NOT NULL,
   "version"          TEXT    NOT NULL,
@@ -1071,7 +1071,7 @@ CREATE TABLE IF NOT EXISTS "engine_registrations" (
   CONSTRAINT "EngineRegistration_name_version_key" UNIQUE ("name","version")
 );
 
-CREATE TABLE IF NOT EXISTS "routing_plan_logs" (
+CREATE TABLE IF NOT EXISTS "RoutingPlanLog" (
   "id"                  TEXT    NOT NULL DEFAULT gen_random_uuid()::text,
   "jobId"               TEXT    NOT NULL,
   "orgId"               TEXT    NOT NULL,
@@ -1086,7 +1086,7 @@ CREATE TABLE IF NOT EXISTS "routing_plan_logs" (
   CONSTRAINT "RoutingPlanLog_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE IF NOT EXISTS "job_checkpoints" (
+CREATE TABLE IF NOT EXISTS "JobCheckpoint" (
   "id"              TEXT    NOT NULL DEFAULT gen_random_uuid()::text,
   "jobId"           TEXT    NOT NULL,
   "orgId"           TEXT    NOT NULL,
@@ -1101,7 +1101,7 @@ CREATE TABLE IF NOT EXISTS "job_checkpoints" (
   CONSTRAINT "JobCheckpoint_jobId_key" UNIQUE ("jobId")
 );
 
-CREATE TABLE IF NOT EXISTS "dead_letter_jobs" (
+CREATE TABLE IF NOT EXISTS "DeadLetterJob" (
   "id"             TEXT    NOT NULL DEFAULT gen_random_uuid()::text,
   "jobId"          TEXT    NOT NULL,
   "orgId"          TEXT    NOT NULL,
@@ -1121,7 +1121,7 @@ CREATE TABLE IF NOT EXISTS "dead_letter_jobs" (
   CONSTRAINT "DeadLetterJob_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE IF NOT EXISTS "asset_relationships" (
+CREATE TABLE IF NOT EXISTS "AssetRelationship" (
   "id"           TEXT    NOT NULL DEFAULT gen_random_uuid()::text,
   "orgId"        TEXT    NOT NULL,
   "fromId"       TEXT    NOT NULL,
@@ -1135,11 +1135,11 @@ CREATE TABLE IF NOT EXISTS "asset_relationships" (
   CONSTRAINT "AssetRelationship_pkey"          PRIMARY KEY ("id"),
   CONSTRAINT "AssetRelationship_from_to_key"   UNIQUE ("fromId","toId","relationship")
 );
-CREATE INDEX IF NOT EXISTS "AssetRelationship_orgId_idx"       ON "asset_relationships"("orgId");
-CREATE INDEX IF NOT EXISTS "AssetRelationship_fromId_idx"      ON "asset_relationships"("fromId");
-CREATE INDEX IF NOT EXISTS "AssetRelationship_toId_idx"        ON "asset_relationships"("toId");
+CREATE INDEX IF NOT EXISTS "AssetRelationship_orgId_idx"       ON "AssetRelationship"("orgId");
+CREATE INDEX IF NOT EXISTS "AssetRelationship_fromId_idx"      ON "AssetRelationship"("fromId");
+CREATE INDEX IF NOT EXISTS "AssetRelationship_toId_idx"        ON "AssetRelationship"("toId");
 
-CREATE TABLE IF NOT EXISTS "memory_signal_logs" (
+CREATE TABLE IF NOT EXISTS "MemorySignalLog" (
   "id"              TEXT    NOT NULL DEFAULT gen_random_uuid()::text,
   "domain"          TEXT    NOT NULL,
   "orgId"           TEXT    NOT NULL,
@@ -1148,9 +1148,9 @@ CREATE TABLE IF NOT EXISTS "memory_signal_logs" (
   "writtenAt"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT "MemorySignalLog_pkey" PRIMARY KEY ("id")
 );
-CREATE INDEX IF NOT EXISTS "MemorySignalLog_orgId_idx" ON "memory_signal_logs"("orgId");
+CREATE INDEX IF NOT EXISTS "MemorySignalLog_orgId_idx" ON "MemorySignalLog"("orgId");
 
-CREATE TABLE IF NOT EXISTS "worker_health_snapshots" (
+CREATE TABLE IF NOT EXISTS "WorkerHealthSnapshot" (
   "workerId"          TEXT             NOT NULL,
   "queueName"         TEXT             NOT NULL,
   "status"            TEXT             NOT NULL,
@@ -1233,143 +1233,3 @@ ON CONFLICT DO NOTHING;
 -- ✓ DONE. All tables, enums, indexes, and safe ALTER statements applied.
 -- Your Arkiol database is fully initialized and ready for production.
 -- ─────────────────────────────────────────────────────────────────────────────
-
--- =============================================================================
--- SECTION 14: TABLE RENAME COMPATIBILITY
--- =============================================================================
--- Rename any PascalCase tables created by older migrations to their correct
--- snake_case names that match Prisma @@map directives.
--- Safe to run multiple times — DO blocks handle errors gracefully.
-
-DO $$ BEGIN
-  ALTER TABLE "EngineRegistration"   RENAME TO "engine_registrations";
-EXCEPTION WHEN undefined_table OR duplicate_table THEN NULL; END $$;
-
-DO $$ BEGIN
-  ALTER TABLE "RoutingPlanLog"       RENAME TO "routing_plan_logs";
-EXCEPTION WHEN undefined_table OR duplicate_table THEN NULL; END $$;
-
-DO $$ BEGIN
-  ALTER TABLE "JobCheckpoint"        RENAME TO "job_checkpoints";
-EXCEPTION WHEN undefined_table OR duplicate_table THEN NULL; END $$;
-
-DO $$ BEGIN
-  ALTER TABLE "DeadLetterJob"        RENAME TO "dead_letter_jobs";
-EXCEPTION WHEN undefined_table OR duplicate_table THEN NULL; END $$;
-
-DO $$ BEGIN
-  ALTER TABLE "AssetRelationship"    RENAME TO "asset_relationships";
-EXCEPTION WHEN undefined_table OR duplicate_table THEN NULL; END $$;
-
-DO $$ BEGIN
-  ALTER TABLE "MemorySignalLog"      RENAME TO "memory_signal_logs";
-EXCEPTION WHEN undefined_table OR duplicate_table THEN NULL; END $$;
-
-DO $$ BEGIN
-  ALTER TABLE "WorkerHealthSnapshot" RENAME TO "worker_health_snapshots";
-EXCEPTION WHEN undefined_table OR duplicate_table THEN NULL; END $$;
-
--- =============================================================================
--- SECTION 15: MISSING COLUMNS FROM RECENT MIGRATIONS
--- =============================================================================
-
--- Job: atomic credit commit fields (20260313_production_hardening)
-ALTER TABLE "Job"
-  ADD COLUMN IF NOT EXISTS "creditsHeld"     INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "creditFinalized" BOOLEAN NOT NULL DEFAULT false;
-
-CREATE INDEX IF NOT EXISTS "Job_creditFinalized_idx" ON "Job" ("creditFinalized");
-CREATE INDEX IF NOT EXISTS "Job_creditsHeld_idx"     ON "Job" ("creditsHeld");
-
--- Org: creditsHeld for running total of held credits
-ALTER TABLE "Org"
-  ADD COLUMN IF NOT EXISTS "creditsHeld" INTEGER NOT NULL DEFAULT 0;
-
--- CreditTransaction: idempotencyKey (may already exist, safe to add)
-ALTER TABLE "CreditTransaction"
-  ADD COLUMN IF NOT EXISTS "idempotencyKey" TEXT;
-
-CREATE UNIQUE INDEX IF NOT EXISTS "CreditTransaction_idempotencyKey_key"
-  ON "CreditTransaction" ("idempotencyKey")
-  WHERE "idempotencyKey" IS NOT NULL;
-
--- batch_jobs: webhook delivery tracking fields (20260313_production_hardening)
-ALTER TABLE "batch_jobs"
-  ADD COLUMN IF NOT EXISTS "webhookUrl"            TEXT,
-  ADD COLUMN IF NOT EXISTS "webhookFailures"       INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "lastDeliveredAt"       TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS "lastStatusCode"        INTEGER,
-  ADD COLUMN IF NOT EXISTS "deliveryCount"         INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "consecutiveFailures"   INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS "apiKeyId"              TEXT;
-
--- JobType enum: ensure all launch values exist
-ALTER TYPE "JobType" ADD VALUE IF NOT EXISTS 'BATCH_GENERATE';
-ALTER TYPE "JobType" ADD VALUE IF NOT EXISTS 'RENDER_NORMAL_AD';
-ALTER TYPE "JobType" ADD VALUE IF NOT EXISTS 'RENDER_CINEMATIC_AD';
-ALTER TYPE "JobType" ADD VALUE IF NOT EXISTS 'STUDIO_RENDER_CINEMATIC';
-ALTER TYPE "JobType" ADD VALUE IF NOT EXISTS 'PROCESS_BRAND_ASSET';
-
--- CreditReason enum: ensure all values exist
-ALTER TYPE "CreditReason" ADD VALUE IF NOT EXISTS 'normal_ad';
-ALTER TYPE "CreditReason" ADD VALUE IF NOT EXISTS 'cinematic_ad';
-ALTER TYPE "CreditReason" ADD VALUE IF NOT EXISTS 'static_hq';
-ALTER TYPE "CreditReason" ADD VALUE IF NOT EXISTS 'asset_on_demand';
-ALTER TYPE "CreditReason" ADD VALUE IF NOT EXISTS 'asset_on_demand_hq';
-ALTER TYPE "CreditReason" ADD VALUE IF NOT EXISTS 'asset_on_demand_refund';
-ALTER TYPE "CreditReason" ADD VALUE IF NOT EXISTS 'brand_asset_process';
-
--- JobStatus enum: ensure all values exist  
-ALTER TYPE "JobStatus" ADD VALUE IF NOT EXISTS 'PENDING';
-ALTER TYPE "JobStatus" ADD VALUE IF NOT EXISTS 'COMPLETED';
-ALTER TYPE "JobStatus" ADD VALUE IF NOT EXISTS 'CANCELLED';
-ALTER TYPE "JobStatus" ADD VALUE IF NOT EXISTS 'QUEUED';
-ALTER TYPE "JobStatus" ADD VALUE IF NOT EXISTS 'SUCCEEDED';
-ALTER TYPE "JobStatus" ADD VALUE IF NOT EXISTS 'CANCELED';
-ALTER TYPE "JobStatus" ADD VALUE IF NOT EXISTS 'REFUNDED';
-
--- =============================================================================
--- SECTION 16: PRISMA MIGRATION HISTORY
--- =============================================================================
--- Creates the _prisma_migrations table and marks all migrations as applied.
--- This prevents Prisma from trying to re-run migrations on the next deploy.
-
-CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
-  "id"                  VARCHAR(36)  NOT NULL,
-  "checksum"            VARCHAR(64)  NOT NULL,
-  "finished_at"         TIMESTAMPTZ,
-  "migration_name"      VARCHAR(255) NOT NULL,
-  "logs"                TEXT,
-  "rolled_back_at"      TIMESTAMPTZ,
-  "started_at"          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  "applied_steps_count" INTEGER      NOT NULL DEFAULT 0,
-  CONSTRAINT "_prisma_migrations_pkey" PRIMARY KEY ("id")
-);
-
-INSERT INTO "_prisma_migrations" ("id","checksum","migration_name","finished_at","applied_steps_count")
-VALUES
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260227_unified_platform',        NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260228_hardening',               NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260228_v16',                     NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260301_ai_engine_benchmarks',    NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260301_brand_learning_flag',     NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260302_asset_engine_v2',         NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260303_archetype_intelligence',  NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260305_v9_platform',             NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260306_v10_consolidation',       NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260307_v12_credit_reason_enum',  NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260308_brand_asset_library',     NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260310_cinematic_ad_mode',       NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260310_mobile_companion',        NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260312_bulk_generation',         NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260312_control_plane',           NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260312_launch_enum_cleanup',     NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260313_plan_enum_backfill',      NOW(),1),
-  (gen_random_uuid()::text,'0000000000000000000000000000000000000000000000000000000000000000','20260313_production_hardening',    NOW(),1)
-ON CONFLICT DO NOTHING;
-
--- =============================================================================
--- ✓ COMPLETE. All tables, enums, indexes, renames, and migration history set.
--- Run this file in Supabase SQL Editor to fully initialize the database.
--- Idempotent — safe to run multiple times on any state.
--- =============================================================================
