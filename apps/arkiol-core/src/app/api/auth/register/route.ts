@@ -57,13 +57,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: first }, { status: 400 });
   }
 
-  // Normalize email identically to login — must be consistent
-  const email    = parsed.data.email.trim().toLowerCase();
-  const password = parsed.data.password;
-  const name     = parsed.data.name;
-  const orgName  = parsed.data.orgName;
-
-  console.info('[register] attempt for email:', email);
+  const { email, password, name, orgName } = parsed.data;
 
   // ── Password strength ──────────────────────────────────────────────────────
   const pwError = validatePasswordStrength(password);
@@ -73,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   // ── Duplicate email check ──────────────────────────────────────────────────
   try {
-    const existing = await prisma.user.findUnique({ where: { email } }); // email already normalized
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       return NextResponse.json(
         { error: "An account with this email already exists" },
