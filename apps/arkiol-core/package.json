@@ -2,7 +2,7 @@
   "name": "@arkiol/core",
   "version": "3.0.0",
   "private": true,
-  "description": "ARKIOL v3 — Core Design Platform",
+  "description": "ARKIOL v3 \u2014 Core Design Platform",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate --schema=../../packages/shared/prisma/schema.prisma && next build",
@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@arkiol/shared": "file:../../packages/shared",
-    "@auth/prisma-adapter": "1.0.7",
+    "@auth/prisma-adapter": "^1.0.15",
     "@aws-sdk/client-s3": "^3.614.0",
     "@aws-sdk/s3-request-presigner": "^3.614.0",
     "@prisma/client": "^5.16.1",
@@ -60,9 +60,7 @@
     "server-only": "^0.0.1",
     "sharp": "^0.33.4",
     "stripe": "^15.7.0",
-    "zod": "^3.23.8",
-    "pg": "^8.12.0",
-    "@prisma/adapter-pg": "^5.16.1"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
@@ -80,12 +78,10 @@
     "@typescript-eslint/eslint-plugin": "^7.16.1",
     "@typescript-eslint/parser": "^7.16.1",
     "eslint-config-next": "14.2.5",
-    "concurrently": "^8.2.2",
-    "@types/pg": "^8.11.5"
+    "concurrently": "^8.2.2"
   },
   "engines": {
-    "node": "20.x",
-    "npm": ">=10.0.0"
+    "node": ">=20.0.0"
   },
   "optionalDependencies": {
     "canvas": "^2.11.2",
