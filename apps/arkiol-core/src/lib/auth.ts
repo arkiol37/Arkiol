@@ -1,16 +1,87 @@
 // src/lib/auth.ts
 // Safe auth — works without NEXTAUTH_SECRET/DATABASE_URL configured.
-// When auth is not configured, getServerSession returns null and routes
-// respond with 503 "Authentication not configured" instead of crashing.
+// Uses an INLINE Prisma adapter (no @auth/prisma-adapter package needed).
 import 'server-only';
-// Founder access — imported lazily to avoid circular deps at module load
-// (ownerAccess also imports 'server-only' which is fine in Node context)
 import { type NextRequest } from 'next/server';
 import { ApiError }         from './types';
-import { detectCapabilities } from '@arkiol/shared';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 export type NextAuthOptions = any;
+
+// ── Inline Prisma Adapter for next-auth v4 ────────────────────────────────────
+// Replaces @auth/prisma-adapter entirely — zero external package dependency.
+// Compatible with next-auth@^4.x and Prisma@^5.x
+function buildPrismaAdapter(prisma: any) {
+  return {
+    async createUser(data: any) {
+      return prisma.user.create({ data });
+    },
+    async getUser(id: string) {
+      return prisma.user.findUnique({ where: { id } }).catch(() => null);
+    },
+    async getUserByEmail(email: string) {
+      return prisma.user.findUnique({ where: { email } }).catch(() => null);
+    },
+    async getUserByAccount({ providerAccountId, provider }: any) {
+      const account = await prisma.account.findUnique({
+        where: { provider_providerAccountId: { provider, providerAccountId } },
+        select: { user: true },
+      }).catch(() => null);
+      return account?.user ?? null;
+    },
+    async updateUser({ id, ...data }: any) {
+      return prisma.user.update({ where: { id }, data });
+    },
+    async deleteUser(userId: string) {
+      await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    },
+    async linkAccount(data: any) {
+      return prisma.account.create({ data }).catch(() => null);
+    },
+    async unlinkAccount({ providerAccountId, provider }: any) {
+      await prisma.account.delete({
+        where: { provider_providerAccountId: { provider, providerAccountId } },
+      }).catch(() => {});
+    },
+    async createSession(data: any) {
+      return prisma.session.create({ data });
+    },
+    async getSessionAndUser(sessionToken: string) {
+      const session = await prisma.session.findUnique({
+        where: { sessionToken },
+        include: { user: true },
+      }).catch(() => null);
+      if (!session) return null;
+      const { user, ...sessionData } = session;
+      return { session: sessionData, user };
+    },
+    async updateSession({ sessionToken, ...data }: any) {
+      return prisma.session.update({ where: { sessionToken }, data }).catch(() => null);
+    },
+    async deleteSession(sessionToken: string) {
+      await prisma.session.delete({ where: { sessionToken } }).catch(() => {});
+    },
+    async createVerificationToken(data: any) {
+      return prisma.verificationToken.create({ data }).catch(() => null);
+    },
+    async useVerificationToken({ identifier, token }: any) {
+      return prisma.verificationToken.delete({
+        where: { identifier_token: { identifier, token } },
+      }).catch(() => null);
+    },
+  };
+}
+
+// ── Auth configured check ─────────────────────────────────────────────────────
+function isAuthConfigured(): boolean {
+  const env = process.env;
+  return !!(
+    env.NEXTAUTH_SECRET &&
+    env.NEXTAUTH_SECRET.length >= 32 &&
+    env.DATABASE_URL &&
+    (env.DATABASE_URL.startsWith('postgresql://') || env.DATABASE_URL.startsWith('postgres://'))
+  );
+}
 
 // ── NextAuth options (lazy — only built when auth is configured) ───────────────
 let _authOptions: any = null;
@@ -18,15 +89,12 @@ let _authOptions: any = null;
 function buildAuthOptions(): any {
   const env = process.env;
   const { NextAuthOptions: _unused, ...nextAuth } = require('next-auth') as any;
-  const GoogleProvider     = require('next-auth/providers/google').default;
-  const AppleProvider      = require('next-auth/providers/apple').default;
+  const GoogleProvider      = require('next-auth/providers/google').default;
+  const AppleProvider       = require('next-auth/providers/apple').default;
   const CredentialsProvider = require('next-auth/providers/credentials').default;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const _adapterPkg = '@auth' + '/prisma-adapter'; // split string defeats webpack static analysis
-  const { PrismaAdapter }  = require(_adapterPkg);
-  const { compare }        = require('bcryptjs');
-  const { z }              = require('zod');
-  const { prisma }         = require('./prisma');
+  const { compare }         = require('bcryptjs');
+  const { z }               = require('zod');
+  const { prisma }          = require('./prisma');
 
   function getApplePrivateKey(): string {
     const raw = env.APPLE_PRIVATE_KEY ?? '';
@@ -39,7 +107,7 @@ function buildAuthOptions(): any {
 
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     providers.push(GoogleProvider({
-      clientId: env.GOOGLE_CLIENT_ID,
+      clientId:     env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
       authorization: { params: { prompt: 'consent', access_type: 'offline', response_type: 'code' } },
     }));
@@ -47,7 +115,7 @@ function buildAuthOptions(): any {
 
   if (env.APPLE_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID) {
     providers.push(AppleProvider({
-      clientId: env.APPLE_ID,
+      clientId:     env.APPLE_ID,
       clientSecret: { appleId: env.APPLE_ID, teamId: env.APPLE_TEAM_ID, privateKey: getApplePrivateKey(), keyId: env.APPLE_KEY_ID },
     }));
   }
@@ -71,26 +139,22 @@ function buildAuthOptions(): any {
   }));
 
   return {
-    adapter:  PrismaAdapter(prisma) as any,
+    adapter:  buildPrismaAdapter(prisma),
     session:  { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60 },
     providers,
     secret:   env.NEXTAUTH_SECRET,
     callbacks: {
       async jwt({ token, user }: any) {
         if (user) {
-          // Fresh sign-in — populate token from user object
           token.role  = (user as any).role;
           token.id    = user.id;
           token.orgId = (user as any).orgId;
           token.email = user.email;
 
           // ── Founder auto-promotion ────────────────────────────────────────
-          // If this email is the founder's email and the DB role isn't already
-          // SUPER_ADMIN, promote now so they never get stuck on a free-tier account.
           try {
             const founderEmail = process.env.FOUNDER_EMAIL?.toLowerCase().trim();
             if (founderEmail && user.email?.toLowerCase().trim() === founderEmail && token.role !== 'SUPER_ADMIN') {
-              // Promote DB role + upgrade org plan in one transaction
               const updated = await prisma.user.update({
                 where: { id: user.id },
                 data:  { role: 'SUPER_ADMIN' },
@@ -106,12 +170,12 @@ function buildAuthOptions(): any {
                     creditBalance:      999_999,
                     dailyCreditBalance: 9_999,
                   },
-                }).catch(() => {}); // non-fatal if org already correct
+                }).catch(() => {});
               }
             }
-          } catch { /* non-fatal — access still works via email check */ }
+          } catch { /* non-fatal */ }
         } else if (token.id) {
-          // Token refresh — re-read role from DB so promotions take effect immediately
+          // Token refresh — re-read role from DB
           try {
             const dbUser = await prisma.user.findUnique({
               where:  { id: token.id as string },
@@ -127,22 +191,27 @@ function buildAuthOptions(): any {
         return token;
       },
       async session({ session, token }: any) {
-        if (session.user) { (session.user as any).role = token.role; (session.user as any).id = token.id; (session.user as any).orgId = token.orgId; (session.user as any).email = token.email ?? session.user.email; }
+        if (session.user) {
+          (session.user as any).role  = token.role;
+          (session.user as any).id    = token.id;
+          (session.user as any).orgId = token.orgId;
+          (session.user as any).email = token.email ?? session.user.email;
+        }
         return session;
       },
       async signIn({ user, account, profile }: any) {
-        // ── Apple: persist name from first sign-in ────────────────────────
+        // Apple: persist name from first sign-in
         if (account?.provider === 'apple' && profile?.name && user.id) {
           try {
             const ap = profile as any;
             const fullName = [ap.name?.firstName, ap.name?.lastName].filter(Boolean).join(' ');
-            if (fullName && !user.name) await prisma.user.update({ where: { id: user.id }, data: { name: fullName } }).catch(() => {});
+            if (fullName && !user.name) {
+              await prisma.user.update({ where: { id: user.id }, data: { name: fullName } }).catch(() => {});
+            }
           } catch {}
         }
 
-        // ── OAuth users: ensure they have an org ─────────────────────────
-        // PrismaAdapter creates the User row but doesn't create an Org.
-        // Without an org, dashboard/billing/credits all break.
+        // OAuth users: ensure they have an org
         if (account?.provider !== 'credentials' && user.id) {
           try {
             const dbUser = await prisma.user.findUnique({
@@ -150,11 +219,10 @@ function buildAuthOptions(): any {
               select: { orgId: true, email: true, name: true },
             });
             if (dbUser && !dbUser.orgId) {
-              // Build a slug from the user name or email prefix
-              const founderEmail = process.env.FOUNDER_EMAIL?.toLowerCase().trim();
-              const isFounder = dbUser.email?.toLowerCase().trim() === founderEmail;
-              const displayName = dbUser.name ?? dbUser.email?.split('@')[0] ?? 'user';
-              const baseSlug = displayName
+              const founderEmail  = process.env.FOUNDER_EMAIL?.toLowerCase().trim();
+              const isFounder     = dbUser.email?.toLowerCase().trim() === founderEmail;
+              const displayName   = dbUser.name ?? dbUser.email?.split('@')[0] ?? 'user';
+              const baseSlug      = displayName
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '-')
                 .replace(/^-|-$/g, '')
@@ -162,13 +230,13 @@ function buildAuthOptions(): any {
 
               const newOrg = await prisma.org.create({
                 data: {
-                  name:              isFounder ? 'Arkiol Founder Workspace' : `${displayName}'s Workspace`,
-                  slug:              baseSlug,
-                  plan:              isFounder ? 'STUDIO' : 'FREE',
+                  name:               isFounder ? 'Arkiol Founder Workspace' : `${displayName}'s Workspace`,
+                  slug:               baseSlug,
+                  plan:               isFounder ? 'STUDIO' : 'FREE',
                   subscriptionStatus: 'ACTIVE',
-                  creditBalance:     0,
+                  creditBalance:      0,
                   dailyCreditBalance: 0,
-                  creditLimit:       isFounder ? 999_999 : 500,
+                  creditLimit:        isFounder ? 999_999 : 500,
                 },
               });
 
@@ -182,14 +250,13 @@ function buildAuthOptions(): any {
             }
           } catch (err: any) {
             console.error('[auth] OAuth org creation failed:', err?.message);
-            // Non-fatal — user can still sign in but may lack org
           }
         }
 
         return true;
       },
     },
-    pages:  { signIn: '/login', error: '/error' },
+    pages:  { signIn: '/login', error: '/login' },
     events: {
       async signIn({ user, account }: any) {
         console.info(`[auth] sign_in user=${user.id} provider=${account?.provider ?? 'credentials'}`);
@@ -200,7 +267,7 @@ function buildAuthOptions(): any {
 
 export const authOptions: any = new Proxy({} as any, {
   get(_target, prop) {
-    if (!detectCapabilities().auth) return undefined;
+    if (!isAuthConfigured()) return undefined;
     if (!_authOptions) _authOptions = buildAuthOptions();
     return (_authOptions as any)[prop];
   },
@@ -233,7 +300,7 @@ export function requirePermission(role: string, permission: Permission): void {
 }
 
 export async function getServerSession() {
-  if (!detectCapabilities().auth) return null;
+  if (!isAuthConfigured()) return null;
   try {
     const { getServerSession: nextAuthGetServerSession } = require('next-auth');
     const session = await nextAuthGetServerSession(authOptions);
@@ -246,7 +313,7 @@ export async function getServerSession() {
 }
 
 export async function getAuthUser() {
-  if (!detectCapabilities().auth) throw new ApiError(503, 'Authentication not configured');
+  if (!isAuthConfigured()) throw new ApiError(503, 'Authentication not configured');
   try {
     const { getServerSession: nextAuthGetServerSession } = require('next-auth');
     const session = await nextAuthGetServerSession(authOptions);
@@ -266,12 +333,13 @@ export async function hashPassword(password: string): Promise<string> {
 
 export function validatePasswordStrength(password: string): string | null {
   if (password.length < 8) return 'Password must be at least 8 characters';
-  // Note: no uppercase requirement — lowercase passwords are valid
   return null;
 }
 
-export async function createAuditLog(opts: { userId: string; orgId: string; action: string; resourceType: string; resourceId?: string; metadata?: any; req?: NextRequest }) {
-  if (!detectCapabilities().database) return;
+export async function createAuditLog(opts: {
+  userId: string; orgId: string; action: string;
+  resourceType: string; resourceId?: string; metadata?: any; req?: NextRequest
+}) {
   try {
     const { prisma } = require('./prisma');
     await prisma.auditLog.create({
@@ -290,7 +358,7 @@ export async function createAuditLog(opts: { userId: string; orgId: string; acti
 }
 
 export async function getRequestUser(req: NextRequest) {
-  if (!detectCapabilities().auth) throw new ApiError(503, 'Authentication not configured');
+  if (!isAuthConfigured()) throw new ApiError(503, 'Authentication not configured');
   const userId = req.headers.get('x-user-id');
   const role   = req.headers.get('x-user-role') ?? 'VIEWER';
   const orgId  = req.headers.get('x-org-id') ?? '';
