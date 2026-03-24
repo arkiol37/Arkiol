@@ -21,29 +21,12 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 generator client {
-  provider        = "prisma-client-js"
-  // driverAdapters enables the pg-adapter path, which uses node-postgres
-  // (pg) instead of Prisma's built-in Rust connection pool. The pg driver
-  // does NOT use named prepared statements in pool mode, which permanently
-  // eliminates PostgresError 42P05 "prepared statement already exists" that
-  // occurs when Supabase PgBouncer (transaction mode) reassigns a physical
-  // backend connection to a different Vercel Lambda instance.
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  // DATABASE_URL  → Supabase POOLED endpoint (port 6543)
-  //   Used for all runtime queries via the pg driver adapter.
-  //   No pgbouncer=true needed here — the pg adapter bypasses Prisma's
-  //   internal Rust connection pool entirely, so prepared statement
-  //   collisions cannot occur regardless of pooler mode.
-  // DIRECT_URL    → Supabase DIRECT endpoint (port 5432)
-  //   Used only by prisma migrate deploy / prisma db push.
-  //   Must bypass PgBouncer because those commands use multi-statement
-  //   transactions incompatible with PgBouncer transaction mode.
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -191,7 +174,6 @@ model User {
 
   @@index([orgId])
   @@index([email])
-  @@map("user")
 }
 
 model Account {
@@ -210,7 +192,6 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
-  @@map("account")
 }
 
 model Session {
@@ -219,7 +200,6 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@map("session")
 }
 
 model VerificationToken {
@@ -228,7 +208,6 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
-  @@map("verification_token")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -331,7 +310,6 @@ model Org {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  @@map("org")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -355,7 +333,6 @@ model CreditTransaction {
   @@index([orgId, createdAt])
   @@index([orgId, type])
   @@index([refId])
-  @@map("credit_transaction")
 }
 
 model CreditPack {
@@ -367,7 +344,6 @@ model CreditPack {
   expiryDays    Int?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
-  @@map("credit_pack")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -389,7 +365,6 @@ model EditorDraft {
   @@index([userId, projectId])
   @@index([userId, type, projectId])
   @@index([projectId, orgId])
-  @@map("editor_draft")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -419,7 +394,6 @@ model Brand {
   updatedAt        DateTime @updatedAt
 
   @@index([orgId])
-  @@map("brand")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -449,7 +423,6 @@ model Campaign {
 
   @@index([orgId])
   @@index([status])
-  @@map("campaign")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -487,7 +460,6 @@ model Asset {
   @@index([orgId])
   @@index([campaignId])
   @@index([format])
-  @@map("asset")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -535,7 +507,6 @@ model Job {
   @@index([status])
   @@index([type])
   @@index([createdAt])
-  @@map("job")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -560,7 +531,6 @@ model StudioProject {
 
   @@index([orgId])
   @@index([orgId, deletedAt])
-  @@map("studio_project")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -583,7 +553,6 @@ model ApiKey {
 
   @@index([keyHash])
   @@index([userId])
-  @@map("api_key")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -601,7 +570,6 @@ model Usage {
 
   @@index([userId])
   @@index([createdAt])
-  @@map("usage")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -622,7 +590,6 @@ model ContentPack {
   updatedAt DateTime @updatedAt
 
   @@index([orgId])
-  @@map("content_pack")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -643,7 +610,6 @@ model Webhook {
   updatedAt   DateTime  @updatedAt
 
   @@index([orgId])
-  @@map("webhook")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -666,7 +632,6 @@ model BillingEvent {
   @@index([orgId])
   @@index([type])
   @@index([processed, createdAt])
-  @@map("billing_event")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -687,7 +652,6 @@ model AuditLog {
   @@index([orgId, createdAt])
   @@index([actorId])
   @@index([action])
-  @@map("audit_log")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -713,7 +677,6 @@ model AIFeedbackEvent {
   @@index([orgId])
   @@index([eventType])
   @@index([occurredAt(sort: Desc)])
-  @@map("ai_feedback_event")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -764,7 +727,6 @@ model AIGeneratedAsset {
   @@index([orgId, campaignId])
   @@index([layoutFamily])
   @@index([stylePreset])
-  @@map("ai_generated_asset")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -788,7 +750,6 @@ model AlertLog {
   @@index([severity, firedAt(sort: Desc)])
   @@index([orgId, firedAt(sort: Desc)])
   @@index([alertType, firedAt(sort: Desc)])
-  @@map("alert_log")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -838,7 +799,6 @@ model AIBenchmarkRecord {
   @@index([routingMode])
   @@index([userSelected])
   @@index([overallScore])
-  @@map("ai_benchmark_record")
 }
 
 // Per-job aggregated benchmark summary
@@ -857,7 +817,6 @@ model AIJobSummary {
   completedAt       DateTime
 
   @@index([orgId, completedAt])
-  @@map("ai_job_summary")
 }
 
 // Rolling style performance per org (upserted on each render)
@@ -874,7 +833,6 @@ model AIStylePerformance {
 
   @@unique([orgId, stylePreset])
   @@index([orgId])
-  @@map("ai_style_performance")
 }
 
 // Rolling format performance per org (upserted on each render)
@@ -890,7 +848,6 @@ model AIFormatPerformance {
 
   @@unique([orgId, format])
   @@index([orgId])
-  @@map("ai_format_performance")
 }
 
 // A/B experiment results per org × experiment × variant
@@ -906,7 +863,6 @@ model AIABResult {
 
   @@unique([orgId, experimentName, variant])
   @@index([orgId, experimentName])
-  @@map("ai_ab_result")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -937,7 +893,6 @@ model AIJobMetadata {
 
   @@index([orgId, createdAt])
   @@index([overallScore])
-  @@map("ai_job_metadata")
 }
 
 // Per-stage per-asset execution record (append-only)
@@ -962,7 +917,6 @@ model AIStageTrace {
   @@index([assetId])
   @@index([orgId, stageId])
   @@index([fallback])
-  @@map("ai_stage_trace")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1184,7 +1138,6 @@ model BrandUploadedAsset {
   @@index([processingStatus])
   @@index([orgId, processingStatus])
   @@index([createdAt(sort: Desc)])
-  @@map("brand_uploaded_asset")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1202,7 +1155,6 @@ model MobilePushToken {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
-  @@map("mobile_push_token")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
