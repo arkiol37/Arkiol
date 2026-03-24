@@ -1,13 +1,5 @@
 // src/app/api/auth/[...nextauth]/route.ts
-// Safe NextAuth route — returns 503 when auth not configured.
 import { NextResponse } from 'next/server';
-
-function notConfigured() {
-  return NextResponse.json(
-    { error: 'Authentication not configured', message: 'Set NEXTAUTH_SECRET, NEXTAUTH_URL and DATABASE_URL to enable authentication.' },
-    { status: 503 }
-  );
-}
 
 function isAuthConfigured(): boolean {
   return !!(
@@ -18,14 +10,34 @@ function isAuthConfigured(): boolean {
   );
 }
 
+function notConfigured() {
+  return NextResponse.json(
+    { error: 'Authentication not configured', hint: 'Set NEXTAUTH_SECRET (32+ chars), NEXTAUTH_URL and DATABASE_URL' },
+    { status: 503 }
+  );
+}
+
+// Cached handler — built once per cold start after config is confirmed present
+let _handler: any = null;
+
+async function getHandler() {
+  if (_handler) return _handler;
+  // Dynamic requires keep this out of the module-level bundle evaluation
+  // and prevent webpack from statically analyzing the import chain
+  const nextAuth    = require('next-auth');
+  const NextAuth    = nextAuth.default ?? nextAuth;
+  const { authOptions } = require('../../../../lib/auth');
+  _handler = NextAuth(authOptions);
+  return _handler;
+}
+
 export async function GET(req: Request, ctx: any) {
   if (!isAuthConfigured()) return notConfigured();
   try {
-    const { authOptions } = await import('../../../../lib/auth');
-    const NextAuth        = (await import('next-auth')).default;
-    return NextAuth(authOptions)(req, ctx);
+    const handler = await getHandler();
+    return handler(req, ctx);
   } catch (err: any) {
-    console.error('[nextauth] GET error:', err?.message);
+    console.error('[nextauth] GET error:', err?.message ?? err);
     return notConfigured();
   }
 }
@@ -33,11 +45,10 @@ export async function GET(req: Request, ctx: any) {
 export async function POST(req: Request, ctx: any) {
   if (!isAuthConfigured()) return notConfigured();
   try {
-    const { authOptions } = await import('../../../../lib/auth');
-    const NextAuth        = (await import('next-auth')).default;
-    return NextAuth(authOptions)(req, ctx);
+    const handler = await getHandler();
+    return handler(req, ctx);
   } catch (err: any) {
-    console.error('[nextauth] POST error:', err?.message);
+    console.error('[nextauth] POST error:', err?.message ?? err);
     return notConfigured();
   }
 }
