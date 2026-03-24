@@ -1,11 +1,8 @@
 // src/app/(auth)/login/page.tsx
-// Server component wrapper: reads Google OAuth env server-side and passes the
-// boolean to the client form so the Google button is only shown when configured.
 import { Suspense } from "react";
 import { LoginForm } from "./LoginForm";
 
 export default function LoginPage() {
-  // Read env server-side — never passed as a secret, just a boolean flag
   const googleEnabled = !!(
     process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
   );
