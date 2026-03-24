@@ -22,12 +22,11 @@ function buildAuthOptions(): any {
   const AppleProvider      = require('next-auth/providers/apple').default;
   const CredentialsProvider = require('next-auth/providers/credentials').default;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const _adapterPkg = '@auth' + '/prisma-adapter'; // split string defeats webpack static analysis
+  const { PrismaAdapter }  = require(_adapterPkg);
   const { compare }        = require('bcryptjs');
   const { z }              = require('zod');
   const { prisma }         = require('./prisma');
-  // Only load adapter when DB is configured — credentials+JWT works without it
-  let PrismaAdapter: any = null;
-  try { PrismaAdapter = require('@auth/prisma-adapter').PrismaAdapter; } catch {}
 
   function getApplePrivateKey(): string {
     const raw = env.APPLE_PRIVATE_KEY ?? '';
@@ -60,50 +59,19 @@ function buildAuthOptions(): any {
     credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' } },
     async authorize(credentials: any) {
       const parsed = LoginSchema.safeParse(credentials);
-      if (!parsed.success) {
-        console.warn('[auth] authorize: invalid credentials shape');
-        return null;
-      }
-      // Always normalize email — must match registration storage
-      const email = parsed.data.email.trim().toLowerCase();
-      const password = parsed.data.password;
-
+      if (!parsed.success) return null;
       try {
-        const user = await prisma.user.findUnique({
-          where: { email },
-          select: { id: true, email: true, name: true, role: true, orgId: true, passwordHash: true },
-        });
-        if (!user) {
-          console.warn('[auth] authorize: no user for email:', email);
-          return null;
-        }
-        if (!user.passwordHash) {
-          console.warn('[auth] authorize: user has no passwordHash (OAuth-only account):', user.id);
-          return null;
-        }
-        // Validate bcrypt hash format — rejects corrupted/legacy hashes cleanly
-        // bcryptjs hashes always start with $2b$, $2a$, or $2y$
-        const h4 = user.passwordHash.slice(0, 4);
-        if (h4 !== '$2b$' && h4 !== '$2a$' && h4 !== '$2y$') {
-          console.error('[auth] authorize: invalid hash prefix for user:', user.id, '— use /api/auth/founder-reset to fix');
-          return null;
-        }
-        const valid = await compare(password, user.passwordHash);
-        if (!valid) {
-          console.warn('[auth] authorize: password mismatch for user:', user.id);
-          return null;
-        }
-        console.info('[auth] authorize: success for user:', user.id, 'role:', user.role);
+        const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+        if (!user?.passwordHash) return null;
+        const valid = await compare(parsed.data.password, user.passwordHash);
+        if (!valid) return null;
         return { id: user.id, email: user.email, name: user.name, role: user.role, orgId: user.orgId };
-      } catch (err: any) {
-        console.error('[auth] authorize: unexpected error:', err?.message ?? err);
-        return null;
-      }
+      } catch { return null; }
     },
   }));
 
   return {
-    ...(PrismaAdapter ? { adapter: PrismaAdapter(prisma) as any } : {}),
+    adapter:  PrismaAdapter(prisma) as any,
     session:  { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60 },
     providers,
     secret:   env.NEXTAUTH_SECRET,
@@ -230,37 +198,11 @@ function buildAuthOptions(): any {
   };
 }
 
-// authOptions uses a fully-trapped Proxy so next-auth v4 can enumerate providers,
-// spread, and check for keys — even though the underlying object is built lazily.
-// Without ownKeys + has traps, { ...authOptions } returns {} and login silently fails.
-function getBuiltOptions(): any {
-  if (!detectCapabilities().auth) return {};
-  if (!_authOptions) {
-    try {
-      _authOptions = buildAuthOptions();
-    } catch (err: any) {
-      console.error('[auth] buildAuthOptions failed:', err?.message ?? err);
-      return {};
-    }
-  }
-  return _authOptions;
-}
-
 export const authOptions: any = new Proxy({} as any, {
   get(_target, prop) {
-    return getBuiltOptions()[prop];
-  },
-  ownKeys(_target) {
-    const opts = getBuiltOptions();
-    return Reflect.ownKeys(opts);
-  },
-  has(_target, prop) {
-    return prop in getBuiltOptions();
-  },
-  getOwnPropertyDescriptor(_target, prop) {
-    const opts = getBuiltOptions();
-    return Object.getOwnPropertyDescriptor(opts, prop)
-      ?? { configurable: true, enumerable: true, value: undefined };
+    if (!detectCapabilities().auth) return undefined;
+    if (!_authOptions) _authOptions = buildAuthOptions();
+    return (_authOptions as any)[prop];
   },
 });
 
@@ -334,14 +276,14 @@ export async function createAuditLog(opts: { userId: string; orgId: string; acti
     const { prisma } = require('./prisma');
     await prisma.auditLog.create({
       data: {
-        // Schema fields: actorId (not userId), targetType (not resourceType), targetId (not resourceId)
-        // ipAddress and userAgent are not in the AuditLog schema — omitted
-        actorId:    opts.userId,
-        orgId:      opts.orgId,
-        action:     opts.action,
-        targetType: opts.resourceType,
-        targetId:   opts.resourceId,
-        metadata:   opts.metadata ?? {},
+        userId:       opts.userId,
+        orgId:        opts.orgId,
+        action:       opts.action,
+        resourceType: opts.resourceType,
+        resourceId:   opts.resourceId,
+        metadata:     opts.metadata ? JSON.stringify(opts.metadata) : undefined,
+        ipAddress:    opts.req?.headers.get('x-forwarded-for') ?? opts.req?.headers.get('x-real-ip'),
+        userAgent:    opts.req?.headers.get('user-agent'),
       },
     });
   } catch { /* non-fatal */ }
