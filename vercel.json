@@ -1,36 +1,23 @@
 {
   "framework": "nextjs",
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "npm install --legacy-peer-deps --prefer-online",
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "apps/arkiol-core/.next",
   "env": {
-    "NEXTAUTH_URL": "https://arkiol1.vercel.app",
-    "NEXT_PUBLIC_APP_URL": "https://arkiol1.vercel.app"
+    "SKIP_DB_MIGRATE": "true"
   },
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "no-store"
-        }
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options",        "value": "DENY"    },
+        { "key": "Cache-Control",          "value": "no-store" }
       ]
     }
   ],
   "rewrites": [
-    {
-      "source": "/health",
-      "destination": "/api/health"
-    }
+    { "source": "/health", "destination": "/api/health" }
   ],
   "crons": []
 }
