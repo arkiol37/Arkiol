@@ -76,12 +76,23 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const user = await getRequestUser(req);
 
   // ── Founder bypass — resolved before any credit/plan check ───────────────
-  const _schedEmail = req.headers.get("x-user-email")?.toLowerCase().trim()
-    || ((user as any).email as string | undefined)?.toLowerCase().trim()
-    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email?.toLowerCase().trim()
-    || "";
+  // ── Founder / owner resolution (DB-authoritative) ──────────────────────────
+  const _schedHeaderEmail  = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
+  const _schedUserObjEmail = ((user as any).email as string | undefined)?.toLowerCase().trim() || "";
+  const _schedDbResult = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { email: true, role: true },
+  }).catch(() => null);
+  const _schedDbEmail = _schedDbResult?.email?.toLowerCase().trim() || "";
+  const _schedDbRole  = _schedDbResult?.role || "";
+  const _schedEmail: string = _schedHeaderEmail || _schedUserObjEmail || _schedDbEmail;
   const isFounder     = isFounderEmail(_schedEmail);
-  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" || _schedDbRole === "SUPER_ADMIN"
+    ? "SUPER_ADMIN"
+    : user.role;
+  if (isFounder && _schedDbRole !== "SUPER_ADMIN") {
+    await prisma.user.update({ where: { id: user.id }, data: { role: "SUPER_ADMIN" as any } }).catch(() => {});
+  }
   requirePermission(effectiveRole, "GENERATE_ASSETS");
 
   const rl = await rateLimit(user.id, "generate");
