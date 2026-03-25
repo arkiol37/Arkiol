@@ -4,7 +4,7 @@
 
 import { detectCapabilities } from '@arkiol/shared';
 import "server-only";
-import { isOwnerRole, ownerSnapshot } from "./ownerAccess";
+import { isOwnerRole, isFounderEmail, ownerSnapshot } from "./ownerAccess";
 import { prisma } from "./prisma";
 import {
   OrgEnforcementSnapshot,
@@ -19,10 +19,12 @@ import {
 import { ApiError } from "./types";
 
 // Load org enforcement snapshot (used by all route handlers)
-// Pass userRole to bypass all gating for SUPER_ADMIN / ADMIN.
-export async function loadOrgSnapshot(orgId: string, userRole?: string): Promise<OrgEnforcementSnapshot> {
-  // ── Owner / admin bypass — skip all plan + credit checks ─────────────────
-  if (isOwnerRole(userRole)) return ownerSnapshot(orgId);
+// Pass userRole AND/OR userEmail to bypass all gating for the founder / SUPER_ADMIN.
+// Email bypass is the safety net: if the JWT carried a stale role but the email
+// matches FOUNDER_EMAIL, we still return the unlimited owner snapshot.
+export async function loadOrgSnapshot(orgId: string, userRole?: string, userEmail?: string): Promise<OrgEnforcementSnapshot> {
+  // ── Owner / founder bypass — skip all plan + credit checks ───────────────
+  if (isOwnerRole(userRole) || isFounderEmail(userEmail)) return ownerSnapshot(orgId);
 
   if (!detectCapabilities().database) {
     // Return a permissive free-tier snapshot when DB not configured
@@ -79,8 +81,9 @@ export async function assertGenerationAllowed(params: {
   includeGif:         boolean;
   currentRunning:     number;
   userRole?:          string;  // pass to bypass for SUPER_ADMIN / ADMIN
+  userEmail?:         string;  // founder email bypass — second line of defence
 }): Promise<OrgEnforcementSnapshot> {
-  const snap = await loadOrgSnapshot(params.orgId, params.userRole);
+  const snap = await loadOrgSnapshot(params.orgId, params.userRole, params.userEmail);
 
   const reason: CreditCostKey = params.includeGif ? "gif" : "static";
   const result = preflightJob({
