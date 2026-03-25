@@ -94,12 +94,23 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const user = await getRequestUser(req);
 
   // ── Founder bypass — resolved before any credit/plan check ───────────────
-  const _bulkEmail  = req.headers.get("x-user-email")?.toLowerCase().trim()
-    || ((user as any).email as string | undefined)?.toLowerCase().trim()
-    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email?.toLowerCase().trim()
-    || "";
+  // ── Founder / owner resolution (DB-authoritative) ──────────────────────────
+  const _bulkHeaderEmail  = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
+  const _bulkUserObjEmail = ((user as any).email as string | undefined)?.toLowerCase().trim() || "";
+  const _bulkDbResult = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { email: true, role: true },
+  }).catch(() => null);
+  const _bulkDbEmail = _bulkDbResult?.email?.toLowerCase().trim() || "";
+  const _bulkDbRole  = _bulkDbResult?.role || "";
+  const _bulkEmail: string = _bulkHeaderEmail || _bulkUserObjEmail || _bulkDbEmail;
   const isFounder     = isFounderEmail(_bulkEmail);
-  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" || _bulkDbRole === "SUPER_ADMIN"
+    ? "SUPER_ADMIN"
+    : user.role;
+  if (isFounder && _bulkDbRole !== "SUPER_ADMIN") {
+    await prisma.user.update({ where: { id: user.id }, data: { role: "SUPER_ADMIN" as any } }).catch(() => {});
+  }
   requirePermission(effectiveRole, "GENERATE_ASSETS");
 
   // Rate-limit: 5 bulk requests/min per user (heavier than single generate)
@@ -135,6 +146,12 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   });
   if (!dbUser?.org) throw new ApiError(403, "You must belong to an organization to generate assets");
   const orgId = dbUser.org.id;
+
+  // ── Founder runtime credit injection ─────────────────────────────────────
+  if (isFounder) {
+    (dbUser.org as any).creditBalance    = 999_999;
+    (dbUser.org as any).budgetCapCredits = null;
+  }
 
   // ── Plan gate: bulk feature + size cap ─────────────────────────────────────
   if (!isFounder && effectiveRole !== "SUPER_ADMIN") await assertBatchAllowed(orgId, jobItems.length, effectiveRole);
@@ -188,7 +205,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const totalCreditCost = newItems.reduce((acc, it) => acc + calcJobCredits(it), 0);
   const estimatedCostUSD = totalCreditCost * COST_PER_CREDIT_USD;
 
-  if (estimatedCostUSD > MAX_COST_PER_BATCH_USD) {
+  if (!isFounder && estimatedCostUSD > MAX_COST_PER_BATCH_USD) {
     throw new ApiError(402,
       `Estimated batch cost $${estimatedCostUSD.toFixed(4)} exceeds the per-batch safety limit ` +
       `$${MAX_COST_PER_BATCH_USD.toFixed(2)}. Reduce job count, formats, or variations.`
