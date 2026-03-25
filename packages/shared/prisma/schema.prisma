@@ -422,7 +422,7 @@ model Campaign {
   prompt      String    @db.Text
   stylePreset String    @default("modern_minimal")
   formats     String[]
-  status      JobStatus @default(PENDING)
+  status      String    @default("PENDING")
   assets      Asset[]
   jobs        Job[]
   channels    String[]  @default([])
@@ -482,8 +482,8 @@ model Asset {
 
 model Job {
   id               String    @id @default(cuid())
-  type             JobType
-  status           JobStatus @default(QUEUED)
+  type             String
+  status           String    @default("QUEUED")
   userId           String
   user             User      @relation(fields: [userId], references: [id])
   orgId            String
