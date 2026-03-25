@@ -69,9 +69,13 @@ export async function GET(req: NextRequest) {
     if (!sessionUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     // Founder bypass: if email matches FOUNDER_EMAIL, return max entitlements directly
-    // without reading the DB org — covers the window before DB promotion
+    // without reading the DB org — covers the window before DB promotion.
+    // Guarantee email is resolved: header → DB lookup fallback.
     const { isFounderEmail, ownerSnapshot } = await import('../../../lib/ownerAccess');
-    if (isFounderEmail(sessionEmail) || sessionRole === 'SUPER_ADMIN') {
+    const resolvedEmail = sessionEmail
+      || (await prisma.user.findUnique({ where: { id: sessionUserId }, select: { email: true } }).catch(() => null))?.email?.toLowerCase().trim()
+      || '';
+    if (isFounderEmail(resolvedEmail) || sessionRole === 'SUPER_ADMIN') {
       const { PLANS } = await import('@arkiol/shared');
       return NextResponse.json({
         plan:               'STUDIO',
