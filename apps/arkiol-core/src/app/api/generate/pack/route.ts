@@ -110,12 +110,23 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const user = await getRequestUser(req);
 
   // ── Founder bypass ────────────────────────────────────────────────────────
-  const _packEmail  = req.headers.get("x-user-email")?.toLowerCase().trim()
-    || ((user as any).email as string | undefined)?.toLowerCase().trim()
-    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email?.toLowerCase().trim()
-    || "";
+  // ── Founder / owner resolution (DB-authoritative) ──────────────────────────
+  const _packHeaderEmail  = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
+  const _packUserObjEmail = ((user as any).email as string | undefined)?.toLowerCase().trim() || "";
+  const _packDbResult = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { email: true, role: true },
+  }).catch(() => null);
+  const _packDbEmail = _packDbResult?.email?.toLowerCase().trim() || "";
+  const _packDbRole  = _packDbResult?.role || "";
+  const _packEmail: string = _packHeaderEmail || _packUserObjEmail || _packDbEmail;
   const isFounder     = isFounderEmail(_packEmail);
-  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" || _packDbRole === "SUPER_ADMIN"
+    ? "SUPER_ADMIN"
+    : user.role;
+  if (isFounder && _packDbRole !== "SUPER_ADMIN") {
+    await prisma.user.update({ where: { id: user.id }, data: { role: "SUPER_ADMIN" as any } }).catch(() => {});
+  }
   requirePermission(effectiveRole, "GENERATE_ASSETS");
 
   const rl = await rateLimit(user.id, "generate");
@@ -157,6 +168,12 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   if (!dbUser?.org) throw new ApiError(403, "You must belong to an organization to generate assets");
   const orgId   = dbUser.org.id;
   const orgPlan: string = (dbUser.org as any).plan ?? "FREE";
+
+  // ── Founder runtime credit injection ─────────────────────────────────────
+  if (isFounder) {
+    (dbUser.org as any).creditBalance    = 999_999;
+    (dbUser.org as any).budgetCapCredits = null;
+  }
 
   // ── Plan gate: check pack's requiredPlan ─────────────────────────────────
   const PLAN_ORDER: Record<string, number> = { FREE: 0, CREATOR: 1, PRO: 2, STUDIO: 3 };
@@ -214,7 +231,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   }
 
   const planConfig = getPlanConfig(orgPlan);
-  const canBatch   = checkBatchGenerate({ orgId, plan: orgPlan, creditBalance: creditsAvailable,
+  const _packCreditBalance = isFounder ? 999_999 : dbUser.org.creditBalance;
+  const canBatch   = checkBatchGenerate({ orgId, plan: orgPlan, creditBalance: _packCreditBalance,
     dailyCreditBalance: 0, subscriptionStatus: "ACTIVE", costProtectionBlocked: false });
 
   // ── Route: PRO/STUDIO → BatchJob; CREATOR → sequential campaign jobs ─────
