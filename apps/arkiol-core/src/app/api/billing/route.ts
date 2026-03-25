@@ -29,8 +29,10 @@ function getStripe(): Stripe {
 // ── GET /api/billing — fetch current billing status ───────────────────────────
 // Uses canonical Org fields: creditBalance, currentCycleStart, currentCycleEnd
 // (no legacy creditsUsed / creditLimit columns).
+// NOTE: GET does NOT require billing (Stripe/Paddle) to be configured — it reads
+// plan/credit state directly from the DB. Only POST (checkout/portal) needs Stripe.
 export async function GET(req: NextRequest) {
-  if (!detectCapabilities().billing) return billingUnavailable();
+  if (!detectCapabilities().database) return billingUnavailable();
 
   try {
     const session = await getServerSession(authOptions);
@@ -189,13 +191,7 @@ export async function POST(req: NextRequest) {
 
     const stripe  = getStripe();
     const { org } = user;
-    // Derive base URL from the request itself so it works on any deployment.
-    // Falls back to configured env var, then the request's own origin/host.
-    const configuredUrl = getEnv().NEXT_PUBLIC_APP_URL || getEnv().NEXTAUTH_URL;
-    const requestOrigin = req.headers.get('origin') ?? `https://${req.headers.get('host') ?? ''}`;
-    // Use the explicitly configured URL if available; fall back to the
-    // request's own origin so this works on preview deployments too.
-    const baseUrl = configuredUrl || requestOrigin;
+    const baseUrl = getEnv().NEXT_PUBLIC_APP_URL ?? "https://app.arkiol.com";
 
     // Ensure Stripe customer exists
     let stripeCustomerId = org.stripeCustomerId ?? undefined;
