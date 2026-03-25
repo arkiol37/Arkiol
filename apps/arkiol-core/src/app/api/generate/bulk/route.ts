@@ -25,9 +25,10 @@ import { prisma }                     from "../../../../lib/prisma";
 import { getRequestUser, requirePermission } from "../../../../lib/auth";
 import { rateLimit, rateLimitHeaders }       from "../../../../lib/rate-limit";
 import { generationQueue }                   from "../../../../lib/queue";
-import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable } from "../../../../lib/error-handling";
+import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable }                 from "../../../../lib/error-handling";
 import { ApiError, getCreditCost, GIF_ELIGIBLE_FORMATS } from "../../../../lib/types";
 import { assertBatchAllowed, countOrgRunningJobs } from "../../../../lib/planGate";
+import { isFounderEmail } from "../../../../lib/ownerAccess";
 import {
   createConcurrencyEnforcer,
   checkHqUpgrade,
@@ -77,7 +78,7 @@ function calcJobCredits(item: BulkJobItem): number {
     ? (CREDIT_COSTS.static_hq - CREDIT_COSTS.static)
     : 0;
   return item.formats.reduce((acc, fmt) => {
-    const base    = getCreditCost(fmt, item.includeGif && GIF_ELIGIBLE_FORMATS.has(fmt));
+    const base   = getCreditCost(fmt, item.includeGif && GIF_ELIGIBLE_FORMATS.has(fmt));
     const hqExtra = item.hqUpgrade ? hqExtraPerStatic : 0;
     return acc + (base + hqExtra) * item.variations;
   }, 0);
@@ -91,7 +92,15 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().queue) return queueUnavailable();
 
   const user = await getRequestUser(req);
-  requirePermission(user.role, "GENERATE_ASSETS");
+
+  // ── Founder bypass — resolved before any credit/plan check ───────────────
+  const _bulkEmail  = req.headers.get("x-user-email")?.toLowerCase().trim()
+    || ((user as any).email as string | undefined)?.toLowerCase().trim()
+    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email?.toLowerCase().trim()
+    || "";
+  const isFounder     = isFounderEmail(_bulkEmail);
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+  requirePermission(effectiveRole, "GENERATE_ASSETS");
 
   // Rate-limit: 5 bulk requests/min per user (heavier than single generate)
   const rl = await rateLimit(user.id, "bulk");
@@ -118,8 +127,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     include: {
       org: {
         select: {
-          id: true, plan: true, creditBalance: true, creditsUsed: true,
-          creditLimit: true, budgetCapCredits: true, maxVariationsPerRun: true,
+          id: true, plan: true, creditBalance: true,
+          budgetCapCredits: true, maxVariationsPerRun: true,
         },
       },
     },
@@ -128,7 +137,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const orgId = dbUser.org.id;
 
   // ── Plan gate: bulk feature + size cap ─────────────────────────────────────
-  await assertBatchAllowed(orgId, jobItems.length);
+  if (!isFounder && effectiveRole !== "SUPER_ADMIN") await assertBatchAllowed(orgId, jobItems.length, effectiveRole);
 
   // ── Per-item HQ upgrade plan check ─────────────────────────────────────────
   const orgPlanRaw = (dbUser.org as any).plan ?? "FREE";
@@ -137,7 +146,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       const hqCheck = checkHqUpgrade({
         orgId,
         plan:               orgPlanRaw,
-        creditBalance:      dbUser.org.creditLimit - (dbUser.org.creditsUsed ?? 0),
+        creditBalance:      dbUser.org.creditBalance,
         dailyCreditBalance: 0,
         subscriptionStatus: "ACTIVE",
         costProtectionBlocked: false,
@@ -150,6 +159,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   }
 
   // ── Idempotency: resolve any pre-existing jobs ──────────────────────────────
+  // Items with an idempotencyKey that already has a Job record within 24h are
+  // mapped to the existing job and skipped during creation.
   const existingByKey = new Map<string, string>(); // key → existing jobId
   const idemKeys = jobItems
     .map(it => it.idempotencyKey)
@@ -158,9 +169,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   if (idemKeys.length > 0) {
     const existing = await prisma.job.findMany({
       where: {
-        userId:         user.id,
+        userId:    user.id,
         idempotencyKey: { in: idemKeys },
-        createdAt:      { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       },
       select: { id: true, idempotencyKey: true },
     });
@@ -170,6 +181,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   }
 
   // ── Credit calculation ──────────────────────────────────────────────────────
+  // Only count credits for items that will actually create new jobs
   const newItems = jobItems.filter(
     it => !it.idempotencyKey || !existingByKey.has(it.idempotencyKey)
   );
@@ -183,29 +195,33 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     );
   }
 
-  const creditsAvailable = dbUser.org.creditLimit - (dbUser.org.creditsUsed ?? 0);
-  const budgetCap        = dbUser.org.budgetCapCredits ?? null;
-  const creditsUsed      = dbUser.org.creditsUsed ?? 0;
-
-  if (totalCreditCost > creditsAvailable) {
-    throw new ApiError(402,
-      `Insufficient credits. Batch requires ${totalCreditCost} credits, you have ${creditsAvailable}.`
-    );
-  }
-  if (budgetCap !== null && (creditsUsed + totalCreditCost) > budgetCap) {
-    throw new ApiError(402,
-      `Monthly budget cap (${budgetCap}) would be exceeded. ` +
-      `Used: ${creditsUsed}, batch cost: ${totalCreditCost}.`
-    );
+  // Founder/owner bypasses all credit checks
+  if (!isFounder && effectiveRole !== "SUPER_ADMIN") {
+    const creditsAvailable = dbUser.org.creditBalance;
+    const budgetCap        = dbUser.org.budgetCapCredits ?? null;
+    if (totalCreditCost > creditsAvailable) {
+      throw new ApiError(402,
+        `Insufficient credits. Batch requires ${totalCreditCost} credits, you have ${creditsAvailable}.`
+      );
+    }
+    if (budgetCap !== null && dbUser.org.creditBalance < totalCreditCost) {
+      throw new ApiError(402,
+        `Monthly budget cap (${budgetCap}) would be exceeded. Batch cost: ${totalCreditCost}.`
+      );
+    }
   }
 
   // ── Concurrency gate ────────────────────────────────────────────────────────
   const currentRunning = await countOrgRunningJobs(orgId);
   const planConfig     = getPlanConfig(orgPlanRaw);
+  // A batch counts as 1 concurrent "slot" from the plan perspective;
+  // the individual child jobs are queued and processed by the worker pool.
   const concurrencyEnforcer = createConcurrencyEnforcer(prisma as any);
   const orgLimit = await concurrencyEnforcer.loadOrgConcurrencyLimit(orgId);
 
   // ── Pre-compute intelligence metadata for each new item ────────────────────
+  // Run intelligence pipeline concurrently for all new items — one pipeline call
+  // per unique (prompt+format) combination so bulk jobs with the same prompt share it.
   const intelligenceMetas: Record<string, unknown>[] = await Promise.all(
     newItems.map(async (item) => {
       try {
@@ -259,11 +275,12 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         orgId,
         userId:         user.id,
         status:         "PENDING",
-        totalJobs:      jobItems.length,
+        totalJobs:      jobItems.length,  // includes pre-existing (already counted)
         completedJobs:  existingByKey.size,
         failedJobs:     0,
         cancelledJobs:  0,
         totalCreditCost,
+        ...(label ? {} : {}),
       },
     });
 
@@ -292,14 +309,12 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       const meta = intelligenceMetas[newItemIdx++] ?? {};
       const job  = await tx.job.create({
         data: {
-          type:           "GENERATE_ASSETS",
-          status:         "PENDING",
-          userId:         user.id,
-          orgId,
-          creditCost:     calcJobCredits(item),
-          campaignId:     item.campaignId ?? null,
-          progress:       0,
-          maxAttempts:    3,
+          type:        "GENERATE_ASSETS",
+          status:      "PENDING",
+          userId:      user.id,
+          campaignId:  item.campaignId ?? null,
+          progress:    0,
+          maxAttempts: 3,
           idempotencyKey: item.idempotencyKey ?? null,
           payload: {
             userId:               user.id,
@@ -317,7 +332,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             maxVariationsPerRun:  dbUser.org.maxVariationsPerRun ?? 1,
             hqUpgrade:            item.hqUpgrade,
             archetypeOverride:    item.archetypeOverride ?? undefined,
-            batchId,
+            batchId,             // propagate so worker can call back
             ...meta,
           },
         },
@@ -338,6 +353,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   });
 
   // ── Enqueue all new jobs to BullMQ (after transaction commits) ─────────────
+  // Use plan queue priority so STUDIO jobs run before PRO in shared workers.
   const queuePriority = planConfig.queuePriority;
 
   await Promise.all(
@@ -367,15 +383,15 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   return NextResponse.json(
     {
       batchId,
-      status:            "PENDING",
-      totalJobs:         jobItems.length,
-      newJobs:           createdJobs.length,
+      status:           "PENDING",
+      totalJobs:        jobItems.length,
+      newJobs:          createdJobs.length,
       skippedDuplicates: existingByKey.size,
       totalAssets,
       totalCreditCost,
-      estimatedCostUSD:  +estimatedCostUSD.toFixed(4),
-      estimatedSeconds:  Math.round(totalAssets * 8 / Math.min(3, createdJobs.length || 1)),
-      pollUrl:           `/api/jobs/batch/${batchId}`,
+      estimatedCostUSD: +estimatedCostUSD.toFixed(4),
+      estimatedSeconds: Math.round(totalAssets * 8 / Math.min(3, createdJobs.length || 1)),
+      pollUrl:          `/api/jobs/batch/${batchId}`,
     },
     { status: 202 }
   );
