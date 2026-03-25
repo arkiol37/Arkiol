@@ -81,17 +81,45 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // This single resolved email is the source of truth for all bypass decisions.
   const _headerEmail  = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
   const _userObjEmail = ((user as any).email as string | undefined)?.toLowerCase().trim() || "";
-  const _userEmail: string = _headerEmail || _userObjEmail || (
-    await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } })
-      .catch(() => null)
-  )?.email?.toLowerCase().trim() || "";
+
+  // Always perform DB lookup to guarantee correct email — do not rely solely on
+  // headers which may be absent or stale in certain deployment configurations.
+  const _dbEmailResult = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { email: true, role: true },
+  }).catch(() => null);
+  const _dbEmail = _dbEmailResult?.email?.toLowerCase().trim() || "";
+  const _dbRole  = _dbEmailResult?.role || "";
+
+  // Resolved email: DB is authoritative fallback, headers are fast path
+  const _userEmail: string = _headerEmail || _userObjEmail || _dbEmail;
 
   // isFounder is the single gate for all bypasses in this handler.
   // It checks the resolved email against process.env.FOUNDER_EMAIL directly —
   // no dependency on DB role, JWT role, or any cached state.
   const { isFounderEmail } = await import("../../../lib/ownerAccess");
   const isFounder     = isFounderEmail(_userEmail);
-  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+
+  // effectiveRole: promote to SUPER_ADMIN if founder by email OR if DB role is SUPER_ADMIN.
+  // This covers cases where JWT/header role is stale (e.g., still shows DESIGNER).
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" || _dbRole === "SUPER_ADMIN"
+    ? "SUPER_ADMIN"
+    : user.role;
+
+  // ── GUARANTEED FOUNDER BYPASS — must be before ANY other check ───────────
+  // If the resolved email matches FOUNDER_EMAIL, skip ALL plan/credit/
+  // subscription/capability checks and jump straight to job creation.
+  // This is the single authoritative bypass and cannot be defeated by stale
+  // JWT roles, missing headers, or incorrect DB plan state.
+  if (isFounder) {
+    // Ensure the founder's DB role is SUPER_ADMIN (self-healing promotion)
+    if (_dbRole !== "SUPER_ADMIN") {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: "SUPER_ADMIN" as any },
+      }).catch(() => {/* non-fatal — bypass still applies */});
+    }
+  }
 
   // Permission check uses effectiveRole, not raw user.role, so the founder
   // is never blocked even if the JWT carries a stale DESIGNER role.
@@ -122,6 +150,16 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   });
   if (!dbUser?.org) throw new ApiError(403, "You must belong to an organization to generate assets");
   const orgId = dbUser.org.id;
+
+  // ── Founder runtime credit injection ─────────────────────────────────────
+  // For the founder, override creditBalance to 999999 at runtime so any
+  // downstream code paths that read dbUser.org.creditBalance directly
+  // (e.g. fallback budget cap checks) also pass safely.
+  // This is a runtime-only override — it does NOT write to the database.
+  if (isFounder) {
+    (dbUser.org as any).creditBalance    = 999_999;
+    (dbUser.org as any).budgetCapCredits = null; // null = no cap
+  }
 
   // ── Idempotency: return existing job if same key ───────────────────────────
   if (input.idempotencyKey) {
@@ -198,9 +236,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     return acc + (baseCost + hqExtra) * input.variations;
   }, 0);
 
-  // C3: Per-render cost safety cap
+  // C3: Per-render cost safety cap (skipped for founder)
   const estimatedCostUSD = creditCost * COST_PER_CREDIT_USD;
-  if (estimatedCostUSD > MAX_COST_PER_RENDER_USD) {
+  if (!isFounder && estimatedCostUSD > MAX_COST_PER_RENDER_USD) {
     throw new ApiError(402,
       `Estimated render cost $${estimatedCostUSD.toFixed(4)} exceeds the per-render safety limit ` +
       `$${MAX_COST_PER_RENDER_USD.toFixed(2)}. Reduce formats or variations.`
