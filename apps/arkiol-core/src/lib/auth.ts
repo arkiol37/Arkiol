@@ -152,9 +152,11 @@ function buildAuthOptions(): any {
           token.email = user.email;
 
           // ── Founder auto-promotion ────────────────────────────────────────
+          // Runs on every sign-in (not just first). Self-heals accounts that
+          // pre-existed before FOUNDER_EMAIL was set, or whose DB role was reset.
           try {
             const founderEmail = process.env.FOUNDER_EMAIL?.toLowerCase().trim();
-            if (founderEmail && user.email?.toLowerCase().trim() === founderEmail && token.role !== 'SUPER_ADMIN') {
+            if (founderEmail && user.email?.toLowerCase().trim() === founderEmail) {
               const updated = await prisma.user.update({
                 where: { id: user.id },
                 data:  { role: 'SUPER_ADMIN' },
@@ -165,10 +167,19 @@ function buildAuthOptions(): any {
                 await prisma.org.update({
                   where: { id: updated.orgId },
                   data: {
-                    plan:               'STUDIO',
-                    subscriptionStatus: 'ACTIVE',
-                    creditBalance:      999_999,
-                    dailyCreditBalance: 9_999,
+                    plan:                'STUDIO',
+                    subscriptionStatus:  'ACTIVE',
+                    creditBalance:       999_999,
+                    dailyCreditBalance:  9_999,
+                    canUseStudioVideo:   true,
+                    canUseGifMotion:     true,
+                    canBatchGenerate:    true,
+                    canUseZipExport:     true,
+                    canUseAutomation:    true,
+                    maxConcurrency:      10,
+                    maxDailyVideoJobs:   100,
+                    maxFormatsPerRun:    9,
+                    maxVariationsPerRun: 5,
                   },
                 }).catch(() => {});
               }
