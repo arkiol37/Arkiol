@@ -36,6 +36,7 @@ import { generationQueue }                   from "../../../../lib/queue";
 import { withErrorHandling, dbUnavailable, aiUnavailable }                 from "../../../../lib/error-handling";
 import { ApiError, getCreditCost }           from "../../../../lib/types";
 import { loadOrgSnapshot }                   from "../../../../lib/planGate";
+import { isFounderEmail }                    from "../../../../lib/ownerAccess";
 import { getPlanConfig }                     from "@arkiol/shared";
 import { z }                                 from "zod";
 
@@ -73,7 +74,15 @@ const ScheduleSchema = z.object({
 
 export const POST = withErrorHandling(async (req: NextRequest) => {
   const user = await getRequestUser(req);
-  requirePermission(user.role, "GENERATE_ASSETS");
+
+  // ── Founder bypass — resolved before any credit/plan check ───────────────
+  const _schedEmail = req.headers.get("x-user-email")?.toLowerCase().trim()
+    || ((user as any).email as string | undefined)?.toLowerCase().trim()
+    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email?.toLowerCase().trim()
+    || "";
+  const isFounder     = isFounderEmail(_schedEmail);
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+  requirePermission(effectiveRole, "GENERATE_ASSETS");
 
   const rl = await rateLimit(user.id, "generate");
   if (!rl.success) {
@@ -101,7 +110,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     include: {
       org: {
         select: {
-          id: true, plan: true, creditLimit: true, creditsUsed: true,
+          id: true, plan: true, creditBalance: true,
           maxVariationsPerRun: true, budgetCapCredits: true,
         },
       },
@@ -135,12 +144,15 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const creditCost = genParams.formats.reduce((acc, fmt) => {
     return acc + getCreditCost(fmt, genParams.includeGif) * genParams.variations;
   }, 0);
-  const creditsAvailable = (dbUser.org as any).creditLimit - ((dbUser.org as any).creditsUsed ?? 0);
-  if (creditCost > creditsAvailable) {
-    throw new ApiError(402,
-      `Insufficient credits at schedule time. This job requires ${creditCost} credits; you have ${creditsAvailable}. ` +
-      `Note: credits are deducted at execution time, not when scheduling.`
-    );
+  // Founder/owner bypasses credit pre-check entirely
+  if (!isFounder && effectiveRole !== "SUPER_ADMIN") {
+    const creditsAvailable = dbUser.org.creditBalance;
+    if (creditCost > creditsAvailable) {
+      throw new ApiError(402,
+        `Insufficient credits at schedule time. This job requires ${creditCost} credits; you have ${creditsAvailable}. ` +
+        `Note: credits are deducted at execution time, not when scheduling.`
+      );
+    }
   }
 
   // ── Create DB job record ──────────────────────────────────────────────────
