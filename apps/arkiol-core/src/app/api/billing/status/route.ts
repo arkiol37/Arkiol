@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities, PLANS } from '@arkiol/shared';
 import { getRequestUser }    from "../../../../lib/auth";
+import { isFounderEmail }    from "../../../../lib/ownerAccess";
 import { prisma }            from "../../../../lib/prisma";
 import { withErrorHandling, dbUnavailable } from "../../../../lib/error-handling";
 import { ApiError }          from "../../../../lib/types";
@@ -21,6 +22,25 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
   const user = await getRequestUser(req);
+
+  // ── Founder bypass — return unlimited snapshot without hitting DB ─────────
+  const _statusEmail = req.headers.get("x-user-email")?.toLowerCase().trim()
+    || ((user as any).email as string | undefined)?.toLowerCase().trim()
+    || "";
+  if (isFounderEmail(_statusEmail) || user.role === "SUPER_ADMIN") {
+    return NextResponse.json({
+      plan:               "STUDIO",
+      subscriptionStatus: "ACTIVE",
+      creditsRemaining:   999_999,
+      monthlyCredits:     6000,
+      freeAdsPerDay:      0,
+      cycleEndsAt:        null,
+      creditBalance:      999_999,
+      currentCycleEnd:    null,
+      hasActivePaddle:    false,
+      _founderBypass:     true,
+    });
+  }
 
   // For mobile JWT users, orgId may be null in the token — resolve from DB
   const dbUser = await prisma.user.findUnique({
