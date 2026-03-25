@@ -72,9 +72,12 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
   const user = await getRequestUser(req);
   requirePermission(user.role, "GENERATE_ASSETS");
-  // Merge email for owner bypass check (OWNER_EMAIL env var)
-  const _userEmail = req.headers.get("x-user-email") ??
-    (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email ?? "";
+  // Email is now included in getRequestUser return value (from x-user-email header).
+  // Fallback: session email or DB lookup. Used for founder email bypass check.
+  const _userEmail = (user as any).email
+    || req.headers.get("x-user-email")
+    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email
+    || "";
 
   const rl = await rateLimit(user.id, "generate");
   if (!rl.success) {
@@ -97,7 +100,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // ── Resolve org ────────────────────────────────────────────────────────────
   const dbUser = await prisma.user.findUnique({
     where:   { id: user.id },
-    include: { org: { select: { id: true, budgetCapCredits: true, creditsUsed: true, creditLimit: true, maxVariationsPerRun: true } } },
+    include: { org: { select: { id: true, budgetCapCredits: true, creditBalance: true, maxVariationsPerRun: true } } },
   });
   if (!dbUser?.org) throw new ApiError(403, "You must belong to an organization to generate assets");
   const orgId = dbUser.org.id;
@@ -159,14 +162,14 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
   // ── HQ upgrade plan enforcement (skipped for owner/admin) ──────────────────
   if (input.hqUpgrade && !hasOwnerAccess({ role: effectiveRole })) {
-    const dbOrg = await prisma.org.findUniqueOrThrow({ where: { id: orgId }, select: { plan: true } });
+    const dbOrg = await prisma.org.findUniqueOrThrow({ where: { id: orgId }, select: { plan: true, creditBalance: true, dailyCreditBalance: true, subscriptionStatus: true, costProtectionBlocked: true } });
     const hqCheck = checkHqUpgrade({
       orgId,
       plan:              dbOrg.plan,
-      creditBalance:     dbUser.org.creditLimit - (dbUser.org.creditsUsed ?? 0),
-      dailyCreditBalance: 0,
-      subscriptionStatus: 'ACTIVE',
-      costProtectionBlocked: false,
+      creditBalance:     dbOrg.creditBalance,
+      dailyCreditBalance: dbOrg.dailyCreditBalance,
+      subscriptionStatus: dbOrg.subscriptionStatus,
+      costProtectionBlocked: dbOrg.costProtectionBlocked,
     });
     if (!hqCheck.allowed) throw new ApiError(hqCheck.httpStatus ?? 403, hqCheck.reason ?? 'HQ upgrade not allowed');
   }
@@ -190,12 +193,16 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     );
   }
 
-  // Budget cap check
+  // Budget cap check (skipped for founder/owner)
+  // Uses creditBalance (canonical field) — creditsUsed/creditLimit were removed from schema.
   const budgetCapCredits = dbUser.org.budgetCapCredits ?? null;
-  const creditsUsed      = dbUser.org.creditsUsed ?? 0;
-  if (budgetCapCredits !== null && (creditsUsed + creditCost) > budgetCapCredits) {
+  if (
+    budgetCapCredits !== null &&
+    !hasOwnerAccess({ role: effectiveRole, email: _userEmail }) &&
+    dbUser.org.creditBalance < creditCost
+  ) {
     throw new ApiError(402,
-      `Monthly budget cap (${budgetCapCredits}) reached. Used ${creditsUsed} credits.`
+      `Monthly budget cap (${budgetCapCredits} credits) reached. Purchase more credits to continue.`
     );
   }
 
