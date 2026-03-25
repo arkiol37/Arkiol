@@ -8,12 +8,12 @@ import {
   getTopupPack,
 } from '@arkiol/shared';
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession }          from "next-auth/next";
 import Stripe                        from "stripe";
 import { prisma }                    from "../../../lib/prisma";
-import { authOptions }               from "../../../lib/auth";
 import { rateLimit }                 from "../../../lib/rate-limit";
 import { ApiError }                  from "../../../lib/types";
+import { requirePermission }         from "../../../lib/auth";
+import { isFounderEmail }            from "../../../lib/ownerAccess";
 import { z }                         from "zod";
 import { billingUnavailable } from "../../../lib/error-handling";
 import { PLANS, getPlanConfig, TOPUP_PACKS, getTopupStripePriceId,
@@ -35,11 +35,92 @@ export async function GET(req: NextRequest) {
   if (!detectCapabilities().database) return billingUnavailable();
 
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Use getRequestUser — reads x-user-id injected by middleware (works in App Router).
+    // Also resolves founder email from x-user-email for owner bypass on billing display.
+    const { getRequestUser, hasOwnerAccess: _hasOwner } = await import('../../../lib/auth').then(m => ({
+      getRequestUser: m.getRequestUser,
+      hasOwnerAccess: null,
+    })).catch(() => ({ getRequestUser: null, hasOwnerAccess: null }));
+
+    let sessionUserId: string;
+    let sessionEmail: string = '';
+    let sessionRole: string = 'DESIGNER';
+    let sessionOrgId: string = '';
+
+    // Primary: read from middleware-injected headers (fastest, no session round-trip)
+    const headerUserId = req.headers.get('x-user-id');
+    if (headerUserId) {
+      sessionUserId  = headerUserId;
+      sessionEmail   = req.headers.get('x-user-email') ?? '';
+      sessionRole    = req.headers.get('x-user-role')  ?? 'DESIGNER';
+      sessionOrgId   = req.headers.get('x-org-id')     ?? '';
+    } else {
+      // Fallback: full session lookup
+      const { getServerSession: gss } = await import('next-auth');
+      const { authOptions: ao }       = await import('../../../lib/auth');
+      const session = await gss(ao as any);
+      if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      const su = session.user as any;
+      sessionUserId = su.id;
+      sessionEmail  = su.email ?? '';
+      sessionRole   = su.role  ?? 'DESIGNER';
+      sessionOrgId  = su.orgId ?? '';
+    }
+    if (!sessionUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Founder bypass: if email matches FOUNDER_EMAIL, return max entitlements directly
+    // without reading the DB org — covers the window before DB promotion
+    const { isFounderEmail, ownerSnapshot } = await import('../../../lib/ownerAccess');
+    if (isFounderEmail(sessionEmail) || sessionRole === 'SUPER_ADMIN') {
+      const { PLANS } = await import('@arkiol/shared');
+      return NextResponse.json({
+        plan:               'STUDIO',
+        subscriptionStatus: 'ACTIVE',
+        trialEndsAt:        null,
+        billingCycleAnchor: null,
+        currentCycleStart:  null,
+        currentCycleEnd:    null,
+        monthlyPriceUsd:    149,
+        gracePeriodEndsAt:  null,
+        costProtectionBlocked: false,
+        credits: {
+          balance:      999_999,
+          dailyBalance: 9_999,
+          monthlyLimit: 6000,
+          usagePct:     0,
+          remaining:    999_999,
+          used:         0,
+          limit:        6000,
+        },
+        creditBalance:     999_999,
+        canUseStudioVideo: true,
+        autoRefillEnabled: false,
+        features: {
+          canUseStudioVideo: true,
+          canUseGifMotion:   true,
+          canUseZipExport:   true,
+          canBatchGenerate:  true,
+          canUseAutomation:  true,
+          maxConcurrency:    10,
+          maxDailyVideoJobs: 100,
+        },
+        planLimits: {
+          credits:        6000,
+          members:        999,
+          brands:         999,
+          priceUsd:       149,
+          rolloverPct:    100,
+          maxConcurrency: 10,
+        },
+        autoRefill: { enabled: false, threshold: null },
+        allPlans: [],
+        topupPacks: [],
+        _founderBypass: true,
+      });
+    }
 
     const user = await prisma.user.findUnique({
-      where:   { id: session.user.id },
+      where:   { id: sessionUserId },
       include: {
         org: {
           select: {
@@ -172,18 +253,35 @@ export async function POST(req: NextRequest) {
   if (!detectCapabilities().billing) return billingUnavailable();
 
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Use middleware-injected headers first, fall back to full session lookup
+    const headerUserId = req.headers.get('x-user-id');
+    let postUserId: string;
+    if (headerUserId) {
+      postUserId = headerUserId;
+    } else {
+      const { getServerSession: gss } = await import('next-auth');
+      const { authOptions: ao }       = await import('../../../lib/auth');
+      const session = await gss(ao as any);
+      if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      postUserId = (session.user as any).id;
+    }
+    if (!postUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await rateLimit(session.user.id, "billing");
+    await rateLimit(postUserId, "billing");
 
     const user = await prisma.user.findUnique({
-      where:   { id: session.user.id },
+      where:   { id: postUserId },
       include: { org: true },
     });
     if (!user?.org) return NextResponse.json({ error: "No org" }, { status: 404 });
 
-    requirePermission(user.role, "MANAGE_BILLING");
+    // Founder bypass: derive effectiveRole from email so the founder can manage
+    // billing even if the DB row hasn't been promoted to SUPER_ADMIN yet.
+    const postEmail       = req.headers.get('x-user-email')
+                            ?? (user as any).email
+                            ?? '';
+    const effectiveRole   = isFounderEmail(postEmail) ? 'SUPER_ADMIN' : user.role;
+    requirePermission(effectiveRole, "MANAGE_BILLING");
 
     const body   = await req.json();
     const parsed = PostSchema.safeParse(body);
