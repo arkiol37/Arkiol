@@ -186,16 +186,38 @@ function buildAuthOptions(): any {
             }
           } catch { /* non-fatal */ }
         } else if (token.id) {
-          // Token refresh — re-read role from DB
+          // Token refresh — re-read role, orgId AND email from DB every time.
+          // email must always be present so the middleware x-user-email header
+          // is populated, which the founder bypass in /api/generate depends on.
           try {
             const dbUser = await prisma.user.findUnique({
               where:  { id: token.id as string },
               select: { role: true, orgId: true, email: true },
             }).catch(() => null);
             if (dbUser) {
-              token.role  = dbUser.role;
               token.orgId = dbUser.orgId;
-              if (dbUser.email) token.email = dbUser.email;
+              token.email = dbUser.email ?? token.email;
+
+              // ── Founder: never downgrade on refresh ─────────────────────
+              // If this is the founder email, always force SUPER_ADMIN in the
+              // token, even if the DB row hasn't been promoted yet. This is the
+              // critical fix: without it the refresh branch overwrites
+              // token.role = DESIGNER (DB value) and nullifies the sign-in
+              // promotion that correctly set SUPER_ADMIN.
+              const founderEmail = process.env.FOUNDER_EMAIL?.toLowerCase().trim();
+              const thisEmail    = (dbUser.email ?? token.email as string ?? '').toLowerCase().trim();
+              if (founderEmail && thisEmail && thisEmail === founderEmail) {
+                token.role = 'SUPER_ADMIN';
+                // Also ensure the DB is corrected on every refresh so it stays consistent
+                if (dbUser.role !== 'SUPER_ADMIN') {
+                  await prisma.user.update({
+                    where: { id: token.id as string },
+                    data:  { role: 'SUPER_ADMIN' },
+                  }).catch(() => {});
+                }
+              } else {
+                token.role = dbUser.role;
+              }
             }
           } catch {}
         }
@@ -373,7 +395,10 @@ export async function getRequestUser(req: NextRequest) {
   const userId = req.headers.get('x-user-id');
   const role   = req.headers.get('x-user-role') ?? 'VIEWER';
   const orgId  = req.headers.get('x-org-id') ?? '';
-  if (userId) return { id: userId, role, orgId };
+  const email  = req.headers.get('x-user-email') ?? '';
+  // Always return email when reading from middleware-injected headers.
+  // The founder bypass in /api/generate depends on email being present.
+  if (userId) return { id: userId, role, orgId, email };
 
   try {
     const { getServerSession: nextAuthGetServerSession } = require('next-auth');
