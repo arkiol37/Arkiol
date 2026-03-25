@@ -9,7 +9,7 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 import { prisma }           from "../../../lib/prisma";
 import { getRequestUser, requirePermission } from "../../../lib/auth";
-import { hasOwnerAccess } from "../../../lib/ownerAccess";
+// hasOwnerAccess removed — replaced by isFounder/effectiveRole resolved at handler entry
 import { rateLimit, rateLimitHeaders }    from "../../../lib/rate-limit";
 import { generationQueue }  from "../../../lib/queue";
 import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable, authUnavailable } from "../../../lib/error-handling";
@@ -71,13 +71,31 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
 
   const user = await getRequestUser(req);
-  requirePermission(user.role, "GENERATE_ASSETS");
-  // Email is now included in getRequestUser return value (from x-user-email header).
-  // Fallback: session email or DB lookup. Used for founder email bypass check.
-  const _userEmail = (user as any).email
-    || req.headers.get("x-user-email")
-    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email
-    || "";
+
+  // ── Founder / owner resolution — must happen before ANY plan or credit check ──
+  // Priority order for email:
+  //   1. x-user-email header (injected by middleware from JWT — fastest, no DB)
+  //   2. email field on user object returned by getRequestUser
+  //   3. Guaranteed DB lookup as final fallback (covers stale/missing headers)
+  // We always do the DB lookup when headers are absent to guarantee correctness.
+  // This single resolved email is the source of truth for all bypass decisions.
+  const _headerEmail  = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
+  const _userObjEmail = ((user as any).email as string | undefined)?.toLowerCase().trim() || "";
+  const _userEmail: string = _headerEmail || _userObjEmail || (
+    await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } })
+      .catch(() => null)
+  )?.email?.toLowerCase().trim() || "";
+
+  // isFounder is the single gate for all bypasses in this handler.
+  // It checks the resolved email against process.env.FOUNDER_EMAIL directly —
+  // no dependency on DB role, JWT role, or any cached state.
+  const { isFounderEmail } = await import("../../../lib/ownerAccess");
+  const isFounder     = isFounderEmail(_userEmail);
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+
+  // Permission check uses effectiveRole, not raw user.role, so the founder
+  // is never blocked even if the JWT carries a stale DESIGNER role.
+  requirePermission(effectiveRole, "GENERATE_ASSETS");
 
   const rl = await rateLimit(user.id, "generate");
   if (!rl.success) {
@@ -125,8 +143,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     }
   }
 
-  // ── Abuse detection (skipped for owner/admin) ────────────────────────────
-  if (!hasOwnerAccess({ role: user.role, email: _userEmail })) {
+  // ── Abuse detection (skipped for founder/owner) ─────────────────────────
+  if (!isFounder && effectiveRole !== "SUPER_ADMIN") {
     const recentJobCount = await prisma.job.count({
       where: {
         userId:    user.id,
@@ -142,14 +160,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   }
 
   // ── Plan enforcement via shared planEnforcer ───────────────────────────────
-  // Checks: subscription status, feature flags (gif), concurrency, format/variation caps, credits
-  // Founder bypass: if the session email matches FOUNDER_EMAIL, pass SUPER_ADMIN as the role
-  // even if the DB hasn't been promoted yet. This covers the window between account creation
-  // and the first sign-out/sign-in that triggers the JWT promotion callback.
-  const effectiveRole = hasOwnerAccess({ role: user.role, email: _userEmail })
-    ? 'SUPER_ADMIN'
-    : user.role;
-
+  // effectiveRole is already resolved above. If founder/owner, loadOrgSnapshot
+  // inside assertGenerationAllowed returns ownerSnapshot (unlimited credits,
+  // STUDIO plan, ACTIVE status) and preflightJob never runs credit checks.
   const currentRunning = await countOrgRunningJobs(orgId);
   await assertGenerationAllowed({
     orgId,
@@ -158,10 +171,11 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     includeGif:     input.includeGif,
     currentRunning,
     userRole:       effectiveRole,
+    userEmail:      _userEmail,   // second-layer founder bypass inside loadOrgSnapshot
   });
 
   // ── HQ upgrade plan enforcement (skipped for owner/admin) ──────────────────
-  if (input.hqUpgrade && !hasOwnerAccess({ role: effectiveRole })) {
+  if (input.hqUpgrade && !isFounder && effectiveRole !== "SUPER_ADMIN") {
     const dbOrg = await prisma.org.findUniqueOrThrow({ where: { id: orgId }, select: { plan: true, creditBalance: true, dailyCreditBalance: true, subscriptionStatus: true, costProtectionBlocked: true } });
     const hqCheck = checkHqUpgrade({
       orgId,
@@ -198,7 +212,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const budgetCapCredits = dbUser.org.budgetCapCredits ?? null;
   if (
     budgetCapCredits !== null &&
-    !hasOwnerAccess({ role: effectiveRole, email: _userEmail }) &&
+    !isFounder && effectiveRole !== "SUPER_ADMIN" &&
     dbUser.org.creditBalance < creditCost
   ) {
     throw new ApiError(402,
