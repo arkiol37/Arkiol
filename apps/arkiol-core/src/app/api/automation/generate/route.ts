@@ -187,10 +187,30 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   }
 
   // ── Batch size gate + founder bypass ─────────────────────────────────────
-  const _automEmail    = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
-  const _automUserRole = req.headers.get("x-user-role") ?? "DESIGNER";
-  const _automIsFounder = isFounderEmail(_automEmail);
-  const _automEffRole   = _automIsFounder ? "SUPER_ADMIN" : _automUserRole;
+  // Automation uses API-key auth (no session). Resolve founder by DB email lookup.
+  // Header email is best-effort; DB is the authoritative fallback.
+  const _automHeaderEmail  = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
+  const _automUserRole     = req.headers.get("x-user-role") ?? "DESIGNER";
+  const _automDbResult     = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, role: true },
+  }).catch(() => null);
+  const _automDbEmail      = _automDbResult?.email?.toLowerCase().trim() || "";
+  const _automDbRole       = _automDbResult?.role || "";
+  const _automEmail        = _automHeaderEmail || _automDbEmail;
+  const _automIsFounder    = isFounderEmail(_automEmail);
+  const _automEffRole      = _automIsFounder || _automUserRole === "SUPER_ADMIN" || _automDbRole === "SUPER_ADMIN"
+    ? "SUPER_ADMIN"
+    : _automUserRole;
+  if (_automIsFounder && _automDbRole !== "SUPER_ADMIN") {
+    await prisma.user.update({ where: { id: userId }, data: { role: "SUPER_ADMIN" as any } }).catch(() => {});
+  }
+  // Runtime credit injection for founder
+  if (_automIsFounder) {
+    (org as any).creditBalance    = 999_999;
+    (org as any).creditsHeld      = 0;
+    (org as any).budgetCapCredits = null;
+  }
 
   if (!isOwnerRole(_automEffRole) && !_automIsFounder) {
     await assertBatchAllowed(orgId, jobs.length, _automEffRole);
