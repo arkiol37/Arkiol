@@ -25,9 +25,10 @@ import { prisma }                            from "../../../../lib/prisma";
 import { getRequestUser, requirePermission } from "../../../../lib/auth";
 import { rateLimit, rateLimitHeaders }       from "../../../../lib/rate-limit";
 import { generationQueue }                   from "../../../../lib/queue";
-import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable } from "../../../../lib/error-handling";
+import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable }                 from "../../../../lib/error-handling";
 import { ApiError, getCreditCost, GIF_ELIGIBLE_FORMATS } from "../../../../lib/types";
 import { assertBatchAllowed, countOrgRunningJobs, loadOrgSnapshot } from "../../../../lib/planGate";
+import { isFounderEmail } from "../../../../lib/ownerAccess";
 import { buildCampaignPlan, campaignFormatToGenerationPayload } from "../../../../engines/campaign/creative-director";
 import { TEMPLATE_PACKS, getPackById, getPacksByPlan } from "../../../../engines/campaign/template-packs";
 import {
@@ -107,7 +108,15 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
 
 export const POST = withErrorHandling(async (req: NextRequest) => {
   const user = await getRequestUser(req);
-  requirePermission(user.role, "GENERATE_ASSETS");
+
+  // ── Founder bypass ────────────────────────────────────────────────────────
+  const _packEmail  = req.headers.get("x-user-email")?.toLowerCase().trim()
+    || ((user as any).email as string | undefined)?.toLowerCase().trim()
+    || (await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } }).catch(() => null))?.email?.toLowerCase().trim()
+    || "";
+  const isFounder     = isFounderEmail(_packEmail);
+  const effectiveRole = isFounder || user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : user.role;
+  requirePermission(effectiveRole, "GENERATE_ASSETS");
 
   const rl = await rateLimit(user.id, "generate");
   if (!rl.success) {
@@ -139,8 +148,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     include: {
       org: {
         select: {
-          id: true, plan: true, creditBalance: true, creditsUsed: true,
-          creditLimit: true, budgetCapCredits: true, maxVariationsPerRun: true,
+          id: true, plan: true, creditBalance: true,
+          budgetCapCredits: true, maxVariationsPerRun: true,
         },
       },
     },
@@ -153,7 +162,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const PLAN_ORDER: Record<string, number> = { FREE: 0, CREATOR: 1, PRO: 2, STUDIO: 3 };
   const userPlanRank = PLAN_ORDER[orgPlan.toUpperCase()] ?? 0;
   const packPlanRank = PLAN_ORDER[pack.requiredPlan]     ?? 99;
-  if (userPlanRank < packPlanRank) {
+  if (!isFounder && effectiveRole !== "SUPER_ADMIN" && userPlanRank < packPlanRank) {
     throw new ApiError(403,
       `The "${pack.name}" pack requires ${pack.requiredPlan} plan. Your current plan is ${orgPlan}.`
     );
@@ -194,11 +203,14 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     return acc + (base + hqExtra) * variations;
   }, 0);
 
-  const creditsAvailable = (dbUser.org as any).creditLimit - ((dbUser.org as any).creditsUsed ?? 0);
-  if (totalCreditCost > creditsAvailable) {
-    throw new ApiError(402,
-      `Insufficient credits. Pack requires ${totalCreditCost} credits, you have ${creditsAvailable}.`
-    );
+  // Founder/owner bypasses all credit checks
+  if (!isFounder && effectiveRole !== "SUPER_ADMIN") {
+    const creditsAvailable = dbUser.org.creditBalance;
+    if (totalCreditCost > creditsAvailable) {
+      throw new ApiError(402,
+        `Insufficient credits. Pack requires ${totalCreditCost} credits, you have ${creditsAvailable}.`
+      );
+    }
   }
 
   const planConfig = getPlanConfig(orgPlan);
@@ -251,9 +263,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
     const { createdJobs } = await prisma.$transaction(async (tx) => {
       await concurrencyEnforcer.assertWithinLimit(tx as any, {
-        orgId,
-        userId: user.id,
-        maxConcurrency: orgLimit.maxConcurrency,
+        orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
       });
 
       await (tx as any).batchJob.create({
@@ -283,8 +293,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             type:        "GENERATE_ASSETS",
             status:      "PENDING",
             userId:      user.id,
-            orgId,
-            creditCost:  getCreditCost(format, false) * variations,
             campaignId:  campaignPlan.campaignId,
             progress:    0,
             maxAttempts: 3,
@@ -362,9 +370,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       const job = await prisma.$transaction(async (tx) => {
         if (idx === 0) {
           await concurrencyEnforcer.assertWithinLimit(tx as any, {
-            orgId,
-            userId: user.id,
-            maxConcurrency: orgLimit.maxConcurrency,
+            orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
           });
         }
         return tx.job.create({
@@ -372,8 +378,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             type:        "GENERATE_ASSETS",
             status:      "PENDING",
             userId:      user.id,
-            orgId,
-            creditCost:  getCreditCost(format, false) * variations,
             campaignId:  campaignPlan.campaignId,
             progress:    0,
             maxAttempts: 3,
