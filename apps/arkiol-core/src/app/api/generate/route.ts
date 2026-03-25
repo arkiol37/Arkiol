@@ -28,7 +28,7 @@ import {
 import { z } from "zod";
 
 // Vercel route config — replaces vercel.json functions block
-export const maxDuration = 10;
+export const maxDuration = 30;
 
 
 const COST_PER_CREDIT_USD     = 0.008;
@@ -140,6 +140,13 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
   // ── Plan enforcement via shared planEnforcer ───────────────────────────────
   // Checks: subscription status, feature flags (gif), concurrency, format/variation caps, credits
+  // Founder bypass: if the session email matches FOUNDER_EMAIL, pass SUPER_ADMIN as the role
+  // even if the DB hasn't been promoted yet. This covers the window between account creation
+  // and the first sign-out/sign-in that triggers the JWT promotion callback.
+  const effectiveRole = hasOwnerAccess({ role: user.role, email: _userEmail })
+    ? 'SUPER_ADMIN'
+    : user.role;
+
   const currentRunning = await countOrgRunningJobs(orgId);
   await assertGenerationAllowed({
     orgId,
@@ -147,11 +154,11 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     variations:     input.variations,
     includeGif:     input.includeGif,
     currentRunning,
-    userRole:       user.role,
+    userRole:       effectiveRole,
   });
 
   // ── HQ upgrade plan enforcement (skipped for owner/admin) ──────────────────
-  if (input.hqUpgrade && !hasOwnerAccess({ role: user.role })) {
+  if (input.hqUpgrade && !hasOwnerAccess({ role: effectiveRole })) {
     const dbOrg = await prisma.org.findUniqueOrThrow({ where: { id: orgId }, select: { plan: true } });
     const hqCheck = checkHqUpgrade({
       orgId,
@@ -250,8 +257,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         type:        "GENERATE_ASSETS",
         status:      "PENDING",
         userId:      user.id,
-        orgId,
-        creditCost,
         campaignId:  input.campaignId ?? null,
         progress:    0,
         maxAttempts: 3,
