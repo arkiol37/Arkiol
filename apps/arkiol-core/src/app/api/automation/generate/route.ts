@@ -36,7 +36,7 @@ import { generationQueue }             from "../../../../lib/queue";
 import { withErrorHandling }           from "../../../../lib/error-handling";
 import { ApiError, getCreditCost }     from "../../../../lib/types";
 import { validateWebhookUrl }          from "@arkiol/shared";
-import { isOwnerRole } from "../../../../lib/ownerAccess";
+import { isOwnerRole, isFounderEmail } from "../../../../lib/ownerAccess";
 import { assertBatchAllowed }          from "../../../../lib/planGate";
 import { holdCredits }                 from "@arkiol/shared";
 import { createHash }                  from "crypto";
@@ -165,7 +165,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // ── Load org ─────────────────────────────────────────────────────────────
   const org = await prisma.org.findUnique({
     where:  { id: orgId },
-    select: { id: true, plan: true, creditLimit: true, creditsUsed: true, creditsHeld: true, budgetCapCredits: true },
+    select: { id: true, plan: true, creditBalance: true, creditsHeld: true, budgetCapCredits: true },
   });
   if (!org) throw new ApiError(403, "Organization not found", "ORG_NOT_FOUND");
 
@@ -186,28 +186,35 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     }
   }
 
-  // ── Batch size gate ───────────────────────────────────────────────────────
-  // ── Plan enforcement (skipped for owner/admin) ───────────────────────────
+  // ── Batch size gate + founder bypass ─────────────────────────────────────
+  const _automEmail    = req.headers.get("x-user-email")?.toLowerCase().trim() || "";
   const _automUserRole = req.headers.get("x-user-role") ?? "DESIGNER";
-  if (!isOwnerRole(_automUserRole)) await assertBatchAllowed(orgId, jobs.length, _automUserRole);
+  const _automIsFounder = isFounderEmail(_automEmail);
+  const _automEffRole   = _automIsFounder ? "SUPER_ADMIN" : _automUserRole;
+
+  if (!isOwnerRole(_automEffRole) && !_automIsFounder) {
+    await assertBatchAllowed(orgId, jobs.length, _automEffRole);
+  }
 
   // ── Credit pre-check (TOCTOU-safe: will re-verify inside transaction) ────
   const totalCreditCost = jobs.reduce((acc, j) =>
     acc + j.formats.reduce((fa, fmt) => fa + getCreditCost(fmt, false) * j.variations, 0), 0
   );
 
-  const creditsAvailable = (org.creditLimit ?? 0)
-    - ((org.creditsUsed ?? 0) + (org.creditsHeld ?? 0)); // subtract both used AND held
-  const budgetHeadroom   = org.budgetCapCredits !== null
-    ? org.budgetCapCredits - (org.creditsUsed ?? 0)
-    : Infinity;
-  const effectiveAvailable = Math.min(creditsAvailable, budgetHeadroom);
+  // Founder/owner bypasses all credit checks
+  if (!_automIsFounder && !isOwnerRole(_automEffRole)) {
+    const creditsAvailable = (org.creditBalance ?? 0) - (org.creditsHeld ?? 0);
+    const budgetHeadroom   = org.budgetCapCredits !== null
+      ? org.budgetCapCredits
+      : Infinity;
+    const effectiveAvailable = Math.min(creditsAvailable, budgetHeadroom);
 
-  if (totalCreditCost > effectiveAvailable) {
-    throw new ApiError(402,
-      `Insufficient credits. Batch requires ${totalCreditCost}, available: ${Math.max(0, effectiveAvailable)}.`,
-      "CREDIT_INSUFFICIENT"
-    );
+    if (totalCreditCost > effectiveAvailable) {
+      throw new ApiError(402,
+        `Insufficient credits. Batch requires ${totalCreditCost}, available: ${Math.max(0, effectiveAvailable)}.`,
+        "CREDIT_INSUFFICIENT"
+      );
+    }
   }
 
   // ── Create BatchJob + individual Jobs in one transaction ──────────────────
