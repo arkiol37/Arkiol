@@ -38,7 +38,7 @@
     "vercel-build": "npm run vercel-build --workspace=apps/arkiol-core"
   },
   "engines": {
-    "node": "20.x",
+    "node": ">=20.0.0",
     "npm": ">=10.0.0"
   },
   "devDependencies": {
