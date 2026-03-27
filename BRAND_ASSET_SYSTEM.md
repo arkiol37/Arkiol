@@ -1,3 +1,4 @@
+[BRAND_ASSET_SYSTEM.md](https://github.com/user-attachments/files/26294598/BRAND_ASSET_SYSTEM.md)
 # Brand Asset → 2D Ad Video Generation System
 ## Arkiol Platform v13 — Complete Implementation
 
