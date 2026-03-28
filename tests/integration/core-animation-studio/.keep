@@ -1,0 +1,3 @@
+// Integration test suite: arkiol-core <-> animation-studio bridge
+// Validates cross-app communication, shared schema compliance, and
+// end-to-end design-to-animation pipeline.
