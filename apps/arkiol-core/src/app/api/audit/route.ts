@@ -18,14 +18,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
 import { prisma }            from "../../../lib/prisma";
-import { getAuthUser, requirePermission } from "../../../lib/auth";
+import { getRequestUser, requirePermission } from "../../../lib/auth";
 import { withErrorHandling, dbUnavailable } from "../../../lib/error-handling";
 import { ApiError }          from "../../../lib/types";
 
 export const GET = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "VIEW_ANALYTICS");
 
   const dbUser = await prisma.user.findUnique({
