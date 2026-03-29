@@ -16,7 +16,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: https://cdn.arkiol.ai https://*.s3.amazonaws.com https://*.s3.us-east-1.amazonaws.com",
-      "connect-src 'self' https://*.sentry.io https://sentry.io https://api.paddle.com https://sandbox-api.paddle.com",
+      "connect-src 'self' https://*.sentry.io https://sentry.io https://api.paddle.com https://sandbox-api.paddle.com https://fonts.googleapis.com https://fonts.gstatic.com",
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",
@@ -67,7 +67,11 @@ const nextConfig = {
     formats:         ['image/avif', 'image/webp'],
   },
 
+  // Next.js 14.x: both locations work, root-level is preferred since 14.0
+  serverExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq'],
+
   experimental: {
+    // Kept as fallback for compatibility — same list as serverExternalPackages above
     serverComponentsExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq'],
   },
 
