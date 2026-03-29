@@ -125,7 +125,7 @@ export function registerFonts(): { ok: boolean; registered: number; error?: stri
 export function buildSvgFontFaces(cdnBase?: string): string {
   let envBase: string | undefined;
   try {
-    const { getEnv } = require('../../../lib/types'); // lazy to avoid circular deps
+    const { getEnv } = require('@arkiol/shared'); // lazy to avoid circular deps
     envBase = getEnv?.()?.FONT_CDN_BASE_URL;
   } catch { /* pre-init — fall back to no CDN */ }
   const base = cdnBase ?? envBase ?? "";
