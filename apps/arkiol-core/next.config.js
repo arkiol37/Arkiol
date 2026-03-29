@@ -67,7 +67,9 @@ const nextConfig = {
     formats:         ['image/avif', 'image/webp'],
   },
 
-  serverExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq'],
+  experimental: {
+    serverComponentsExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq'],
+  },
 
   webpack: (config, { isServer }) => {
     if (isServer) {
