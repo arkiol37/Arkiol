@@ -21,7 +21,7 @@
 import "server-only";
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse }  from "next/server";
-import { prisma }                     from "../../../../lib/prisma";
+import { prisma, safeTransaction }      from "../../../../lib/prisma";
 import { getRequestUser, requirePermission } from "../../../../lib/auth";
 import { rateLimit, rateLimitHeaders }       from "../../../../lib/rate-limit";
 import { generationQueue }                   from "../../../../lib/queue";
@@ -277,7 +277,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // ── Atomic creation: BatchJob + all constituent Jobs ───────────────────────
   const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  const { batchJob, createdJobs } = await prisma.$transaction(async (tx) => {
+  const { batchJob, createdJobs } = await safeTransaction(async (tx: any) => {
     // Re-enforce concurrency inside transaction
     await concurrencyEnforcer.assertWithinLimit(tx as any, {
       orgId,
