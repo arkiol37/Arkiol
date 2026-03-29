@@ -182,7 +182,6 @@ export function BrandAssetView() {
             style={{
               margin: 0,
               fontSize: 26,
-              ,
               fontFamily: "var(--font-display)",
               letterSpacing: "-0.045em",
             }}
@@ -309,7 +308,6 @@ export function BrandAssetView() {
           <h3
             style={{
               fontSize: 18,
-              ,
               fontFamily: "var(--font-display)",
               margin: "0 0 8px",
               letterSpacing: "-0.04em",
