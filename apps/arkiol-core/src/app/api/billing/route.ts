@@ -56,9 +56,9 @@ export async function GET(req: NextRequest) {
       sessionOrgId   = req.headers.get('x-org-id')     ?? '';
     } else {
       // Fallback: full session lookup
-      const { getServerSession: gss } = await import('next-auth');
-      const { authOptions: ao }       = await import('../../../lib/auth');
-      const session = await gss(ao as any);
+      // auth via getRequestUser (middleware-injected headers, then session fallback)
+      const _br = await (require('../../../lib/auth').getRequestUser)(req).catch(() => null);
+      const session = _br ? { user: { id: _br.id, email: _br.email, orgId: _br.orgId, role: _br.role } } : null;
       if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       const su = session.user as any;
       sessionUserId = su.id;
@@ -263,9 +263,9 @@ export async function POST(req: NextRequest) {
     if (headerUserId) {
       postUserId = headerUserId;
     } else {
-      const { getServerSession: gss } = await import('next-auth');
-      const { authOptions: ao }       = await import('../../../lib/auth');
-      const session = await gss(ao as any);
+      // auth via getRequestUser (middleware-injected headers, then session fallback)
+      const _br = await (require('../../../lib/auth').getRequestUser)(req).catch(() => null);
+      const session = _br ? { user: { id: _br.id, email: _br.email, orgId: _br.orgId, role: _br.role } } : null;
       if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       postUserId = (session.user as any).id;
     }
