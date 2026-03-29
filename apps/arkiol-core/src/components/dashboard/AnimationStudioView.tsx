@@ -102,7 +102,7 @@ export function AnimationStudioView() {
   if (gated) return (
     <div className="ak-fade-in" style={{ padding:"60px 48px", maxWidth:680, margin:"0 auto", textAlign:"center" }}>
       <div style={{ fontSize:52, marginBottom:20 }}>🎬</div>
-      <h1 style={{ fontSize:28, , fontFamily:"var(--font-display)", letterSpacing:"-0.04em", margin:"0 0 12px" }}>Animation Studio</h1>
+      <h1 style={{ fontSize:28, fontFamily:"var(--font-display)", letterSpacing:"-0.04em", margin:"0 0 12px" }}>Animation Studio</h1>
       <p style={{ fontSize:14, color:"var(--text-secondary)", lineHeight:1.7, marginBottom:32 }}>
         Generate Normal Ads and Cinematic Ads from a single prompt.<br/>Available on <strong>Creator, Pro, and Studio</strong> plans.
       </p>
@@ -124,7 +124,7 @@ export function AnimationStudioView() {
     <div className="ak-fade-in" style={{ padding:"36px 44px", maxWidth:1200 }}>
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:32 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:28, , fontFamily:"var(--font-display)", letterSpacing:"-0.045em" }}>🎬 Animation Studio</h1>
+          <h1 style={{ margin:0, fontSize:28, fontFamily:"var(--font-display)", letterSpacing:"-0.045em" }}>🎬 Animation Studio</h1>
           <p style={{ margin:"5px 0 0", fontSize:13, color:"var(--text-secondary)" }}>Generate Normal Ads or Cinematic Ads from a single prompt</p>
         </div>
         <div style={{ display:"flex", background:"var(--bg-elevated)", borderRadius:"var(--radius-md)", border:"1px solid var(--border-strong)", overflow:"hidden" }}>
@@ -201,7 +201,7 @@ export function AnimationStudioView() {
               <div style={{ display:"flex", gap:10 }}>
                 {DURATIONS.map(d=>(
                   <button key={d.v} onClick={()=>setDur(d.v)} disabled={genning} style={{ flex:1, padding:"12px 8px", borderRadius:"var(--radius-md)", border:`1px solid ${dur===d.v?"var(--border-accent)":"var(--border-strong)"}`, background:dur===d.v?"var(--accent-tint-md)":"transparent", cursor:"pointer", fontFamily:"var(--font-body)", textAlign:"center" }}>
-                    <div style={{ fontSize:18, , color:dur===d.v?"var(--accent-light)":"var(--text-primary)", fontFamily:"var(--font-display)", letterSpacing:"-0.03em" }}>{d.l}</div>
+                    <div style={{ fontSize:18, color:dur===d.v?"var(--accent-light)":"var(--text-primary)", fontFamily:"var(--font-display)", letterSpacing:"-0.03em" }}>{d.l}</div>
                     <div style={{ fontSize:10.5, color:"var(--text-muted)", marginTop:3 }}>{d.n}</div>
                   </button>
                 ))}
@@ -240,7 +240,7 @@ export function AnimationStudioView() {
                 <div style={{ fontSize:11, color:"var(--text-muted)" }}>{mode==="Cinematic Ad"?"Cinematic rendering":"Standard rendering"}</div>
               </div>
               <div style={{ display:"flex", alignItems:"baseline", gap:4 }}>
-                <span style={{ fontSize:28, , fontFamily:"var(--font-display)", color:"var(--accent-light)", letterSpacing:"-0.05em" }}>{sm.credits}</span>
+                <span style={{ fontSize:28, fontFamily:"var(--font-display)", color:"var(--accent-light)", letterSpacing:"-0.05em" }}>{sm.credits}</span>
                 <span style={{ fontSize:12, color:"var(--text-muted)" }}>credits</span>
               </div>
             </div>
@@ -274,7 +274,7 @@ export function AnimationStudioView() {
           ) : assets.length===0 ? (
             <div style={{ textAlign:"center", padding:"60px 24px", background:"var(--bg-elevated)", borderRadius:"var(--radius-2xl)", border:"1px dashed var(--border-strong)" }}>
               <div style={{ fontSize:44, marginBottom:14 }}>🎬</div>
-              <h3 style={{ fontSize:18, , fontFamily:"var(--font-display)", margin:"0 0 8px" }}>No video ads yet</h3>
+              <h3 style={{ fontSize:18, fontFamily:"var(--font-display)", margin:"0 0 8px" }}>No video ads yet</h3>
               <p style={{ color:"var(--text-muted)", fontSize:13, maxWidth:300, margin:"0 auto 22px" }}>Create your first Normal or Cinematic ad above.</p>
               <button onClick={()=>setTab("create")} className="ak-btn ak-btn-primary">🎬 Create Video Ad</button>
             </div>
