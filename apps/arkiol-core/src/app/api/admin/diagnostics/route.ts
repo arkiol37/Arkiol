@@ -14,7 +14,7 @@
 import "server-only";
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthUser }               from "../../../../lib/auth";
+import { getRequestUser }               from "../../../../lib/auth";
 import { withErrorHandling }         from "../../../../lib/error-handling";
 import { ApiError }                  from "../../../../lib/types";
 import {
@@ -28,7 +28,7 @@ import { dbUnavailable } from "../../../../lib/error-handling";
 export const GET = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) {
     throw new ApiError(403, "Admin access required");
   }
