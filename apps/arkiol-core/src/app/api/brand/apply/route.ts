@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
-import { getAuthUser }   from "../../../../lib/auth";
+import { getRequestUser }   from "../../../../lib/auth";
 import { withErrorHandling, dbUnavailable } from "../../../../lib/error-handling";
 import { ApiError }      from "../../../../lib/types";
 import { prisma }        from "../../../../lib/prisma";
@@ -27,7 +27,7 @@ const ApplyBrandSchema = z.object({
 export const POST = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
 
   const body   = await req.json().catch(() => ({}));
   const parsed = ApplyBrandSchema.safeParse(body);
