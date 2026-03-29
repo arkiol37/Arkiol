@@ -67,11 +67,8 @@ const nextConfig = {
     formats:         ['image/avif', 'image/webp'],
   },
 
-  // Next.js 14.x: both locations work, root-level is preferred since 14.0
-  serverExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq', 'pg', '@prisma/adapter-pg'],
-
   experimental: {
-    // Kept as fallback for compatibility — same list as serverExternalPackages above
+    // In Next.js 14.x, this is the only supported location for server external packages
     serverComponentsExternalPackages: ['sharp', 'canvas', 'gif-encoder-2', 'ioredis', 'bullmq', 'pg', '@prisma/adapter-pg'],
   },
 
