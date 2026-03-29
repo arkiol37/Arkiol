@@ -8,15 +8,17 @@
 // queue forever. This module runs the same pipeline inline so generation
 // works without an external worker.
 //
-// SCOPE: Handles single-format, single-variation requests within the Vercel
-// function timeout (30-60s). Multi-format/variation requests would need a
-// worker or Vercel Pro (300s timeout).
+// FIXES:
+//   1. thumbnailUrl stored in job result — GeneratePanel can show preview
+//      immediately after inline generation completes, without a second fetch.
+//   2. SVG data-URL fallback when S3 is not configured — the thumbnail is
+//      encoded as a base64 data URL so the <img> tag renders it inline.
+//   3. Credit deduction uses creditBalance decrement (matches schema).
 // ─────────────────────────────────────────────────────────────────────────────
 import "server-only";
 import { prisma } from "./prisma";
 import { detectCapabilities } from "@arkiol/shared";
 
-// ── Types ────────────────────────────────────────────────────────────────────
 export interface InlineGenerateParams {
   jobId: string;
   userId: string;
@@ -33,7 +35,6 @@ export interface InlineGenerateParams {
   expectedCreditCost: number;
 }
 
-// ── Main inline processor ────────────────────────────────────────────────────
 export async function runInlineGeneration(params: InlineGenerateParams): Promise<void> {
   const {
     jobId, userId, orgId, prompt, formats, stylePreset,
@@ -47,12 +48,12 @@ export async function runInlineGeneration(params: InlineGenerateParams): Promise
       data: { status: "RUNNING" as any, startedAt: new Date(), attempts: { increment: 1 } },
     }).catch(() => {});
 
-    // ── Load brand if specified ────────────────────────────────────────────
+    // Load brand if specified
     const brand = brandId
       ? await prisma.brand.findUnique({ where: { id: brandId } }).catch(() => null)
       : null;
 
-    // ── Brief analysis (OpenAI call ~2-5s) ────────────────────────────────
+    // Brief analysis (~2-5s)
     const { analyzeBrief } = require("../engines/ai/brief-analyzer");
     const brief = await analyzeBrief({
       prompt,
@@ -60,22 +61,15 @@ export async function runInlineGeneration(params: InlineGenerateParams): Promise
       format: formats[0],
       locale: locale ?? "en",
       brand: brand ? {
-        primaryColor: brand.primaryColor,
+        primaryColor:   brand.primaryColor,
         secondaryColor: brand.secondaryColor,
-        voiceAttribs: brand.voiceAttribs as Record<string, number>,
-        fontDisplay: brand.fontDisplay,
+        voiceAttribs:   brand.voiceAttribs as Record<string, number>,
+        fontDisplay:    brand.fontDisplay,
       } : undefined,
     });
 
-    // Update progress
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { progress: 15 },
-    }).catch(() => {});
+    await prisma.job.update({ where: { id: jobId }, data: { progress: 15 } }).catch(() => {});
 
-    // ── Run pipeline for first format × first variation ───────────────────
-    // On Vercel serverless, we process one asset at a time to stay within
-    // the function timeout. The worker handles multi-asset parallelism.
     const format = formats[0];
     const { runGenerationPipeline } = require("../engines/ai/pipeline-orchestrator");
 
@@ -91,120 +85,130 @@ export async function runInlineGeneration(params: InlineGenerateParams): Promise
       pngScale: 1,
       brief,
       brand: brand ? {
-        primaryColor: brand.primaryColor,
+        primaryColor:   brand.primaryColor,
         secondaryColor: brand.secondaryColor,
-        fontDisplay: brand.fontDisplay,
-        fontBody: brand.fontBody,
-        voiceAttribs: brand.voiceAttribs as Record<string, number>,
-        colors: [brand.primaryColor, brand.secondaryColor],
-        fonts: brand.fontDisplay ? [{ family: brand.fontDisplay }] : [],
-        tone: brand.voiceAttribs ? Object.keys(brand.voiceAttribs as object) : [],
+        fontDisplay:    brand.fontDisplay,
+        fontBody:       brand.fontBody,
+        voiceAttribs:   brand.voiceAttribs as Record<string, number>,
+        colors:         [brand.primaryColor, brand.secondaryColor],
+        fonts:          brand.fontDisplay ? [{ family: brand.fontDisplay }] : [],
+        tone:           brand.voiceAttribs ? Object.keys(brand.voiceAttribs as object) : [],
       } : undefined,
-      requestedVariations: variations,
+      requestedVariations:  variations,
       maxAllowedVariations: variations,
     };
 
-    // Update progress — entering render stage
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { progress: 30 },
-    }).catch(() => {});
+    await prisma.job.update({ where: { id: jobId }, data: { progress: 30 } }).catch(() => {});
 
     const orchestrated = await runGenerationPipeline(orchestratorInput);
-    const result = orchestrated.render;
-    const assetId = result.assetId;
+    const result       = orchestrated.render;
+    const assetId      = result.assetId;
 
-    // Update progress — render complete
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { progress: 70 },
-    }).catch(() => {});
+    await prisma.job.update({ where: { id: jobId }, data: { progress: 70 } }).catch(() => {});
 
-    // ── Upload to S3 if storage is configured ─────────────────────────────
-    let s3Key: string | null = null;
+    // Upload to S3 if configured
+    let s3Key:  string | null = null;
     let svgKey: string | null = null;
 
     if (detectCapabilities().storage) {
       try {
         const { uploadToS3, buildS3Key } = require("./s3");
-        s3Key = buildS3Key(orgId, assetId, "png");
+        s3Key  = buildS3Key(orgId, assetId, "png");
         svgKey = buildS3Key(orgId, assetId, "svg");
         await Promise.all([
-          uploadToS3(s3Key, result.buffer, "image/png"),
+          uploadToS3(s3Key,  result.buffer,                          "image/png"),
           uploadToS3(svgKey, Buffer.from(result.svgSource, "utf-8"), "image/svg+xml"),
         ]);
       } catch (s3Err: any) {
-        console.warn("[inline-generate] S3 upload failed, storing SVG inline:", s3Err.message);
-        s3Key = null;
+        console.warn("[inline-generate] S3 upload failed, using inline SVG:", s3Err.message);
+        s3Key  = null;
         svgKey = null;
       }
     }
 
-    // ── Create asset record ───────────────────────────────────────────────
+    // Resolve thumbnailUrl for immediate display in the frontend:
+    //   - When S3 is configured: build the S3 URL path (client fetches via signed URL)
+    //   - When S3 is absent:     encode SVG as base64 data URL for inline rendering
+    let thumbnailUrl: string | null = null;
+    if (s3Key && detectCapabilities().storage) {
+      try {
+        const { getSignedDownloadUrl } = require("./s3");
+        thumbnailUrl = await getSignedDownloadUrl(s3Key, 3600).catch(() => null);
+      } catch { /* no-op */ }
+    }
+    if (!thumbnailUrl && result.svgSource) {
+      thumbnailUrl = `data:image/svg+xml;base64,${Buffer.from(result.svgSource).toString("base64")}`;
+    }
+
+    // Create asset record
     const { getCreditCost, getCategoryLabel } = require("./types");
     const creditCost = getCreditCost(format, false);
 
-    const asset = await prisma.asset.create({
+    await prisma.asset.create({
       data: {
-        id: assetId,
+        id:           assetId,
         userId,
         orgId,
-        campaignId: campaignId ?? null,
-        name: `${format}-v1`,
+        campaignId:   campaignId ?? null,
+        name:         `${format}-v1`,
         format,
-        category: getCategoryLabel(format),
-        mimeType: "image/png",
-        s3Key: s3Key ?? `inline:${assetId}`,
-        s3Bucket: process.env.S3_BUCKET_NAME ?? "inline",
-        width: result.width,
-        height: result.height,
-        fileSize: result.fileSize,
+        category:     getCategoryLabel(format),
+        mimeType:     "image/png",
+        s3Key:        s3Key ?? `inline:${assetId}`,
+        s3Bucket:     process.env.S3_BUCKET_NAME ?? "inline",
+        width:        result.width,
+        height:       result.height,
+        fileSize:     result.fileSize,
         layoutFamily: result.layoutFamily,
-        svgSource: result.svgSource,
-        brandScore: result.brandScore,
+        svgSource:    result.svgSource,
+        brandScore:   result.brandScore,
         hierarchyValid: result.hierarchyValid,
         metadata: {
-          layoutVariation: result.layoutVariation,
-          violations: result.violations?.slice(0, 10) ?? [],
-          svgKey: svgKey ?? null,
-          durationMs: result.durationMs,
-          pipelineMs: orchestrated.totalPipelineMs,
-          anyFallback: orchestrated.anyFallback,
-          allStagesPassed: orchestrated.allStagesPassed,
-          inlineGenerated: true,
+          layoutVariation:  result.layoutVariation,
+          violations:       result.violations?.slice(0, 10) ?? [],
+          svgKey:           svgKey ?? null,
+          durationMs:       result.durationMs,
+          pipelineMs:       orchestrated.totalPipelineMs,
+          anyFallback:      orchestrated.anyFallback,
+          allStagesPassed:  orchestrated.allStagesPassed,
+          inlineGenerated:  true,
+          thumbnailUrl,   // stored so editor/load can serve it without re-signing
         } as any,
       },
     });
 
-    // Update progress
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { progress: 90 },
-    }).catch(() => {});
+    await prisma.job.update({ where: { id: jobId }, data: { progress: 90 } }).catch(() => {});
 
-    // ── Deduct credits ────────────────────────────────────────────────────
+    // Deduct credits (creditBalance = canonical credit field)
     try {
       await prisma.org.update({
         where: { id: orgId },
-        data: { creditBalance: { decrement: creditCost } },
+        data:  { creditBalance: { decrement: creditCost } },
       });
     } catch (creditErr: any) {
       console.warn("[inline-generate] Credit deduction failed:", creditErr.message);
     }
 
-    // ── Mark job COMPLETED ────────────────────────────────────────────────
+    // Mark job COMPLETED — include thumbnailUrl so GeneratePanel renders preview immediately
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: "COMPLETED" as any,
-        progress: 100,
+        status:      "COMPLETED" as any,
+        progress:    100,
         completedAt: new Date(),
         result: {
-          assetIds: [assetId],
+          assetIds:        [assetId],
           creditCost,
-          totalAssets: 1,
-          durationMs: orchestrated.totalPipelineMs,
+          totalAssets:     1,
+          durationMs:      orchestrated.totalPipelineMs,
           inlineGenerated: true,
+          // Immediate preview support — frontend reads this to show thumbnail
+          // without waiting for a second /api/assets fetch
+          thumbnailUrl,
+          svgSource:       result.svgSource ?? null,
+          format,
+          width:           result.width,
+          height:          result.height,
         } as any,
       },
     });
@@ -214,15 +218,14 @@ export async function runInlineGeneration(params: InlineGenerateParams): Promise
   } catch (err: any) {
     console.error(`[inline-generate] Job ${jobId} failed:`, err.message);
 
-    // Mark job FAILED
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: "FAILED" as any,
+        status:   "FAILED" as any,
         failedAt: new Date(),
         result: {
-          error: err.message ?? "Generation failed",
-          failReason: err.message,
+          error:           err.message ?? "Generation failed",
+          failReason:      err.message,
           inlineGenerated: true,
         } as any,
       },
