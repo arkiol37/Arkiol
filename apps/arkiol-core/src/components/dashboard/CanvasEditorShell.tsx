@@ -111,7 +111,7 @@ export function CanvasEditorShell() {
     <div className="ak-fade-in" style={{ padding:"40px 48px", maxWidth:1080 }}>
       <div style={{ marginBottom:32 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
-          <h1 style={{ margin:0, fontSize:28, , fontFamily:"var(--font-display)", letterSpacing:"-0.045em" }}>Arkiol Canvas</h1>
+          <h1 style={{ margin:0, fontSize:28, fontFamily:"var(--font-display)", letterSpacing:"-0.045em" }}>Arkiol Canvas</h1>
           <span style={{ fontSize:11, fontWeight:700, background:"var(--accent-tint)", color:"var(--accent-light)", border:"1px solid var(--border-accent)", padding:"2px 10px", borderRadius:"var(--radius-full)", letterSpacing:"0.04em" }}>MANUAL EDITOR</span>
         </div>
         <p style={{ margin:0, fontSize:13.5, color:"var(--text-secondary)" }}>
