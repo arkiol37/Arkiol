@@ -487,7 +487,6 @@ export async function renderAsset(input: PipelineInput): Promise<PipelineResult>
             });
           }));
         }
-      }
   }
 
   // ── Stage 4: AI content generation (Ultimate — text-only, theme handles visuals)
