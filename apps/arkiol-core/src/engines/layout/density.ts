@@ -115,7 +115,7 @@ function computeZoneDensity(
 
   // Density score: percentage of zone "filled" by estimated content
   const hintText = hints?.[zone.id as keyof typeof hints] ?? "";
-  const estimatedChars = hintText.length || zone.constraints?.maxChars ?? charBudget;
+  const estimatedChars = hintText.length || (zone.constraints?.maxChars ?? charBudget);
   const densityScore   = Math.min(100, Math.round((estimatedChars / Math.max(1, charBudget)) * 100));
 
   return {
