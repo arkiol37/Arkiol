@@ -222,9 +222,9 @@ const MODULES = [
 ];
 
 // ─── Float cards ──────────────────────────────────────────────────────────────
-function FloatCard({ children, style={}, delay=0 }: any) {
+function FloatCard({ children, style={}, delay=0, className="" }: any) {
   return (
-    <div style={{ position:"absolute", borderRadius:14, overflow:"hidden", background:C.bgSurface, border:`1px solid ${C.border}`, boxShadow:"0 20px 56px rgba(0,0,0,0.5),0 1px 0 rgba(255,255,255,0.07) inset", animation:"card-float 6s ease-in-out infinite", animationDelay:`${delay}s`, ...style }}>
+    <div className={className} style={{ position:"absolute", borderRadius:14, overflow:"hidden", background:C.bgSurface, border:`1px solid ${C.border}`, boxShadow:"0 20px 56px rgba(0,0,0,0.5),0 1px 0 rgba(255,255,255,0.07) inset", animation:"card-float 6s ease-in-out infinite", animationDelay:`${delay}s`, ...style }}>
       {children}
     </div>
   );
@@ -412,7 +412,6 @@ export function LandingPage({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   return (
     <div style={{ fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif", background:C.bg, color:C.textPrimary, overflowX:"hidden" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
         @keyframes ark-orbit  {to{transform:rotate(360deg);}}
         @keyframes orb-ring1  {to{transform:rotateX(62deg) rotateZ(360deg);}}
