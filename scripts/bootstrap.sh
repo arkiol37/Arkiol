@@ -4,10 +4,14 @@
 #
 # Usage: bash scripts/bootstrap.sh
 #
+# Prerequisite: package-lock.json must already be committed to the repo.
+# If it is missing, run `npm install --package-lock-only --legacy-peer-deps`
+# in a networked environment, commit the result, then re-run this script.
+#
 # This script:
 #   1. Validates Node.js and npm versions
-#   2. Generates package-lock.json (if missing or hollow)
-#   3. Installs all dependencies via npm ci (or npm install for first run)
+#   2. Verifies package-lock.json exists
+#   3. Installs all dependencies via npm ci
 #   4. Generates the Prisma client
 #   5. Builds the shared package
 #   6. Validates the Prisma schema
@@ -15,7 +19,7 @@
 #   8. Runs the test suite
 #   9. Builds the Next.js app (production build)
 #
-# If every step passes, the repo is ready to push to GitHub and deploy.
+# If every step passes, the repo is ready to deploy.
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -67,34 +71,28 @@ if [ "$NPM_MAJOR" -lt 10 ]; then
 fi
 pass "npm $(npm -v)"
 
-# ── Step 2: Generate lockfile ─────────────────────────────────────────────────
-header "Generate package-lock.json"
+# ── Step 2: Verify lockfile ──────────────────────────────────────────────────
+header "Verify package-lock.json"
 
-LOCK_LINES=0
-if [ -f package-lock.json ]; then
-  LOCK_LINES=$(wc -l < package-lock.json)
+if [ ! -f package-lock.json ]; then
+  fail "package-lock.json not found"
+  echo ""
+  echo "The lockfile must be generated in a networked environment and committed."
+  echo "Run the following, then commit and re-run this script:"
+  echo ""
+  echo "  npm install --package-lock-only --legacy-peer-deps"
+  echo "  git add package-lock.json"
+  echo "  git commit -m 'chore: add package-lock.json'"
+  echo ""
+  exit 1
 fi
-
-if [ "$LOCK_LINES" -lt 100 ]; then
-  echo "Lockfile missing or incomplete ($LOCK_LINES lines). Generating..."
-  rm -f package-lock.json
-  npm install --package-lock-only --legacy-peer-deps
-  NEW_LINES=$(wc -l < package-lock.json)
-  pass "Generated package-lock.json ($NEW_LINES lines)"
-else
-  pass "package-lock.json exists ($LOCK_LINES lines)"
-fi
+pass "package-lock.json present"
 
 # ── Step 3: Install dependencies ──────────────────────────────────────────────
 header "Install dependencies"
 
-if npm ci 2>/dev/null; then
-  pass "npm ci succeeded (reproducible install)"
-else
-  echo "npm ci failed — falling back to npm install"
-  npm install --legacy-peer-deps
-  pass "npm install succeeded"
-fi
+npm ci --legacy-peer-deps
+pass "npm ci succeeded (deterministic install)"
 
 # ── Step 4: Generate Prisma client ────────────────────────────────────────────
 header "Generate Prisma client"
@@ -178,14 +176,7 @@ fi
 echo ""
 
 if [ "$fail_count" -eq 0 ]; then
-  echo -e "${GREEN}${BOLD}ALL CHECKS PASSED — ready to push to GitHub and deploy to Vercel${NC}"
-  echo ""
-  echo "Next steps:"
-  echo "  git add -A"
-  echo "  git commit -m 'production-ready'"
-  echo "  git push origin main"
-  echo ""
-  echo "  Then import in Vercel and add env vars (see DEPLOY.md)"
+  echo -e "${GREEN}${BOLD}ALL CHECKS PASSED — ready to deploy${NC}"
 else
   echo -e "${YELLOW}${BOLD}SOME CHECKS FAILED — review the output above before deploying${NC}"
   exit 1
