@@ -28,8 +28,8 @@ import {
 } from "@arkiol/shared";
 import { z } from "zod";
 
-// Vercel route config — replaces vercel.json functions block
-export const maxDuration = 30;
+// Vercel route config — increased to 60s for inline generation
+export const maxDuration = 60;
 
 
 const COST_PER_CREDIT_USD     = 0.008;
@@ -346,23 +346,88 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     });
   });
 
-  // ── Enqueue to BullMQ ──────────────────────────────────────────────────────
-  await generationQueue.add(
-    "generate",
-    { ...(job.payload as object), jobId: job.id },
-    {
-      jobId:    job.id,
-      attempts: 3,
-      backoff:  { type: "exponential", delay: 3000 },
-      removeOnComplete: { count: 100 },
-      removeOnFail:     false,
+  // ── Execute generation ─────────────────────────────────────────────────────
+  // Architecture: Arkiol's generation is designed for a BullMQ worker process
+  // (Railway/Fly.io/EC2). On Vercel-only deployments, no worker exists — jobs
+  // would sit PENDING forever. We detect whether to queue or run inline.
+  //
+  // IMPORTANT: On Vercel, the function is killed after the response is sent.
+  // Fire-and-forget promises do NOT continue. So when running inline, we must
+  // complete generation BEFORE returning the response. The frontend will see
+  // the job transition from PENDING→RUNNING→COMPLETED during its polling,
+  // or the response itself will indicate completion.
+
+  let queued = false;
+  let inlineResult: any = null;
+
+  // Try to enqueue to BullMQ — this works when an external worker is running
+  try {
+    if (detectCapabilities().queue) {
+      await generationQueue.add(
+        "generate",
+        { ...(job.payload as object), jobId: job.id },
+        {
+          jobId:    job.id,
+          attempts: 3,
+          backoff:  { type: "exponential", delay: 3000 },
+          removeOnComplete: { count: 100 },
+          removeOnFail:     false,
+        }
+      );
+
+      // Check if there are workers listening on the queue
+      try {
+        const workers = await generationQueue.getWorkers?.() ?? [];
+        queued = workers.length > 0;
+      } catch {
+        queued = false;
+      }
     }
-  );
+  } catch {
+    queued = false;
+  }
+
+  // If no worker is listening, run generation inline (synchronous)
+  // This blocks the response until generation completes or fails.
+  // maxDuration=60 gives us up to 60s for the pipeline.
+  if (!queued) {
+    try {
+      const { runInlineGeneration } = require("../../../lib/inlineGenerate");
+      await runInlineGeneration({
+        jobId:              job.id,
+        userId:             user.id,
+        orgId,
+        prompt:             input.prompt,
+        formats:            input.formats,
+        stylePreset:        input.stylePreset,
+        variations:         input.variations,
+        brandId:            input.brandId ?? null,
+        campaignId:         input.campaignId ?? null,
+        includeGif:         input.includeGif,
+        locale:             input.locale,
+        archetypeOverride:  input.archetypeOverride,
+        expectedCreditCost: creditCost,
+      });
+
+      // Reload the job to get the final state
+      inlineResult = await prisma.job.findUnique({
+        where: { id: job.id },
+        select: { status: true, progress: true, result: true },
+      }).catch(() => null);
+    } catch (inlineErr: any) {
+      console.error(`[generate] Inline generation failed for job ${job.id}:`, inlineErr.message);
+      // Job was already marked FAILED by inlineGenerate
+    }
+  }
+
+  // Return the current job state
+  const finalStatus = inlineResult?.status ?? "PENDING";
+  const finalResult = inlineResult?.result as Record<string, unknown> | null;
 
   return NextResponse.json(
     {
       jobId:            job.id,
-      status:           "PENDING",
+      status:           finalStatus,
       totalAssets,
       creditCost,
       estimatedCostUSD: +estimatedCostUSD.toFixed(4),
@@ -370,7 +435,10 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       formats:          input.formats,
       creditsReserved:  creditCost,
       hqUpgrade:        input.hqUpgrade,
+      inlineExecution:  !queued,
+      // Include result if inline completed
+      ...(finalResult ? { result: finalResult } : {}),
     },
-    { status: 202 }
+    { status: finalStatus === "COMPLETED" ? 200 : 202 }
   );
 });
