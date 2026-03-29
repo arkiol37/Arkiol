@@ -152,7 +152,7 @@ export function BrandKitView() {
 
             {/* Color preview */}
             <div style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--border)", marginTop: 8 }}>
-              <div style={{ height: 52, background: `linear-gradient(135deg, ${form.primaryColor ?? "#7c7ffa"}, ${form.secondaryColor ?? "#c084fc"})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, , color: "#fff", fontFamily: "var(--font-display)", letterSpacing: "-0.03em" }}>
+              <div style={{ height: 52, background: `linear-gradient(135deg, ${form.primaryColor ?? "#7c7ffa"}, ${form.secondaryColor ?? "#c084fc"})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#fff", fontFamily: "var(--font-display)", letterSpacing: "-0.03em" }}>
                 {form.name ?? "Your Brand"}
               </div>
               <div style={{ padding: "12px 14px", background: "var(--bg-input)", display: "flex", gap: 8 }}>
