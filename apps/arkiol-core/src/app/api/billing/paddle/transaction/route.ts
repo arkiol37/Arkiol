@@ -7,9 +7,8 @@
 
 import 'server-only';
 import { detectCapabilities } from '@arkiol/shared';
-import { getRequestUser } from '../../../lib/auth';
+import { getRequestUser, authOptions } from '../../../../../lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { authOptions }      from '../../../../../lib/auth';
 import { prisma }           from '../../../../../lib/prisma';
 import { rateLimit }        from '../../../../../lib/rate-limit';
 import { z }                from 'zod';
