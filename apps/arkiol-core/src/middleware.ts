@@ -6,21 +6,12 @@
 // built-ins. Importing @arkiol/shared here would pull the entire shared barrel
 // (including crypto, Stripe, Prisma adapter, etc.) and break the build.
 //
-// The auth-configured check below intentionally mirrors the same logic used in
-// detectCapabilities().auth in capabilities.ts. If that logic ever changes,
-// update both places. A comment in capabilities.ts cross-references this file.
-//
-// All other files (routes, libs, server components) use detectCapabilities().
-//
 // IMPORTANT: next-auth/jwt is Edge-compatible (uses Web Crypto API internally),
 // so it can be imported at the top level. require() is NOT supported in Edge
-// Runtime and was causing silent failures that prevented auth headers from
-// being injected into downstream requests.
+// Runtime and was causing silent failures.
 // ─────────────────────────────────────────────────────────────────────────────
 import { NextResponse, NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-
-// ── Constants ────────────────────────────────────────────────────────────────
 
 const CSRF_EXEMPT_PREFIXES = [
   '/api/billing/webhook', '/api/webhooks', '/api/health',
@@ -37,15 +28,10 @@ const PUBLIC_PATHS = [
   '/error', '/_next',
 ];
 
-// ── Edge-safe auth check ─────────────────────────────────────────────────────
-// Mirrors detectCapabilities().auth — see packages/shared/src/capabilities.ts.
-// process.env is available in Edge Runtime; @arkiol/shared is not importable here.
 const AUTH_CONFIGURED = !!(
   process.env.NEXTAUTH_SECRET &&
   process.env.NEXTAUTH_SECRET.length >= 32
 );
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function isCsrfExempt(pathname: string): boolean {
   return CSRF_EXEMPT_PREFIXES.some(p => pathname.startsWith(p));
@@ -72,12 +58,10 @@ function withSecurityHeaders(res: NextResponse): NextResponse {
   return res;
 }
 
-// ── Middleware ────────────────────────────────────────────────────────────────
-
 async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
 
-  // ── CSRF guard ──────────────────────────────────────────────────────────────
+  // CSRF guard
   if (
     MUTATING_METHODS.has(req.method) &&
     pathname.startsWith('/api/') &&
@@ -92,23 +76,22 @@ async function middleware(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── Auth not configured → pass everything through ────────────────────────
-  // Individual API routes return 503 for their own capability checks.
+  // Auth not configured → pass through (individual routes do capability checks)
   if (!AUTH_CONFIGURED) {
     return withSecurityHeaders(NextResponse.next());
   }
 
-  // ── Public paths always allowed ──────────────────────────────────────────
+  // Public paths always allowed
   if (isPublicPath(pathname)) {
     return withSecurityHeaders(NextResponse.next());
   }
 
-  // ── Mobile Bearer token — route handler verifies the JWT itself ──────────
+  // Mobile Bearer token — route handler verifies the JWT itself
   if (req.headers.get('authorization')?.startsWith('Bearer ')) {
     return withSecurityHeaders(NextResponse.next());
   }
 
-  // ── Session token check ──────────────────────────────────────────────────
+  // Session token check
   const token = await getToken({
     req,
     secret: process.env.NEXTAUTH_SECRET,
@@ -122,12 +105,12 @@ async function middleware(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── Suspended accounts ───────────────────────────────────────────────────
+  // Suspended accounts
   if ((token as any).suspended) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  // ── Admin-only routes ────────────────────────────────────────────────────
+  // Admin-only routes
   const isAdminPath = ['/admin', '/api/admin'].some(p => pathname.startsWith(p));
   if (isAdminPath && !['ADMIN', 'SUPER_ADMIN'].includes((token as any).role ?? '')) {
     return withSecurityHeaders(
@@ -137,7 +120,7 @@ async function middleware(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── Inject user context headers for downstream route handlers ────────────
+  // Inject user context headers for downstream route handlers
   const response = NextResponse.next();
   if ((token as any).id) {
     response.headers.set('x-user-id',    String((token as any).id));
@@ -152,12 +135,15 @@ export default middleware;
 
 export const config = {
   matcher: [
+    // Dashboard pages
     '/dashboard/:path*',
     '/gallery/:path*',
     '/gif-studio/:path*',
+    '/animation-studio/:path*',
     '/campaign-director/:path*',
     '/campaigns/:path*',
     '/editor/:path*',
+    '/canvas/:path*',
     '/brand/:path*',
     '/brand-assets/:path*',
     '/content-ai/:path*',
@@ -167,21 +153,53 @@ export const config = {
     '/onboarding/:path*',
     '/studio/:path*',
     '/admin/:path*',
+    // API routes — all protected routes must be listed here so
+    // x-user-id / x-user-role / x-org-id headers are injected
     '/api/generate/:path*',
+    '/api/generate',
     '/api/campaigns/:path*',
+    '/api/campaigns',
     '/api/assets/:path*',
+    '/api/assets',
     '/api/export/:path*',
+    '/api/export',
     '/api/brand/:path*',
+    '/api/brand',
+    '/api/brand-assets/:path*',
+    '/api/brand-assets',
     '/api/usage/:path*',
+    '/api/usage',
     '/api/webhooks/:path*',
     '/api/jobs/:path*',
+    '/api/jobs',
     '/api/team/:path*',
+    '/api/team',
     '/api/billing/:path*',
+    '/api/billing',
     '/api/org/:path*',
+    '/api/org',
     '/api/api-keys/:path*',
+    '/api/api-keys',
     '/api/audit/:path*',
+    '/api/audit',
+    '/api/audit-logs/:path*',
+    '/api/audit-logs',
     '/api/mobile/:path*',
     '/api/admin/:path*',
+    '/api/admin',
     '/api/monitoring/:path*',
+    '/api/monitoring',
+    // Previously missing — caused 401 on valid sessions and blank UI
+    '/api/content-ai',
+    '/api/content-ai/:path*',
+    '/api/editor/:path*',
+    '/api/editor',
+    '/api/automation/:path*',
+    '/api/automation',
+    '/api/cost-protection/:path*',
+    '/api/cost-protection',
+    '/api/explore',
+    '/api/explore/feedback',
+    '/api/platform',
   ],
 };
