@@ -46,7 +46,8 @@ const DirectorRequestSchema = z.object({
 export async function POST(req: NextRequest) {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const session = await getServerSession(authOptions);
+  const _ru = await getRequestUser(req).catch(() => null);
+  const session = _ru ? { user: { id: _ru.id, email: _ru.email, orgId: _ru.orgId, role: _ru.role } } : null;
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
