@@ -31,7 +31,7 @@
 import "server-only";
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse }   from "next/server";
-import { prisma }                      from "../../../../lib/prisma";
+import { prisma, safeTransaction }       from "../../../../lib/prisma";
 import { generationQueue }             from "../../../../lib/queue";
 import { withErrorHandling }           from "../../../../lib/error-handling";
 import { ApiError, getCreditCost }     from "../../../../lib/types";
@@ -240,7 +240,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // ── Create BatchJob + individual Jobs in one transaction ──────────────────
   const batchId = `auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  const { createdJobs } = await prisma.$transaction(async (tx) => {
+  const { createdJobs } = await safeTransaction(async (tx: any) => {
     await (tx as any).batchJob.create({
       data: {
         id:              batchId,
