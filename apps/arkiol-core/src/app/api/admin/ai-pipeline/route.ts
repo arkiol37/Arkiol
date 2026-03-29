@@ -23,7 +23,7 @@ import {
   isRegistryValidated,
 } from '@arkiol/shared';
 import { prisma }            from '../../../../lib/prisma';
-import { getAuthUser }       from '../../../../lib/auth';
+import { getRequestUser }       from '../../../../lib/auth';
 import { withErrorHandling, dbUnavailable } from '../../../../lib/error-handling';
 import { ApiError }          from '../../../../lib/types';
 
@@ -68,7 +68,7 @@ function parseTimeRange(url: URL): { from: Date; to: Date } {
 export const GET = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
     throw new ApiError(403, 'Admin access required');
   }
@@ -762,7 +762,7 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
 export const PATCH = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   if (user.role !== 'SUPER_ADMIN') {
     throw new ApiError(403, 'Super admin access required to modify AI pipeline settings');
   }
