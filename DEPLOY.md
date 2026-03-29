@@ -1,3 +1,4 @@
+[DEPLOY.md](https://github.com/user-attachments/files/26329167/DEPLOY.md)
 # Deployment Guide
 
 ## Architecture Overview
@@ -22,33 +23,43 @@ Vercel **cannot** host the worker or animation-studio backend — they require p
 - Stripe account
 - OpenAI API key
 
-## Step 1: Bootstrap locally
+## Step 1: Generate and commit the lockfile
+
+The repository requires a committed `package-lock.json` for deterministic installs across local, CI, and Vercel environments. This must be done once in a networked environment:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/arkiol.git
 cd arkiol
-bash scripts/bootstrap.sh
-```
-
-This generates `package-lock.json`, installs deps, generates Prisma client, and builds the shared package.
-
-## Step 2: Generate and commit lockfile
-
-```bash
+npm install --package-lock-only --legacy-peer-deps
 git add package-lock.json
-git commit -m "chore: generate package-lock.json"
+git commit -m "chore: add package-lock.json"
 git push -u origin main
 ```
 
-CI will now pass using `npm ci` for reproducible installs.
+After this, all environments use `npm ci` — no lockfile generation at install time.
 
-## Step 3: Deploy Next.js to Vercel
+## Step 2: Validate locally
+
+```bash
+bash scripts/bootstrap.sh
+```
+
+This installs dependencies from the committed lockfile, generates the Prisma client, builds all workspaces, runs type-checks and tests, and performs a production build. If every step passes, the repo is ready to deploy.
+
+## Step 3: Configure environment
+
+```bash
+cp apps/arkiol-core/.env.example apps/arkiol-core/.env.local
+# Edit .env.local — minimum: DATABASE_URL, NEXTAUTH_SECRET, FOUNDER_EMAIL
+```
+
+## Step 4: Deploy Next.js to Vercel
 
 1. Go to [vercel.com/new](https://vercel.com/new) and import your GitHub repo
 2. Vercel auto-detects `vercel.json`:
    - **Framework**: Next.js
    - **Root Directory**: `.` (monorepo root)
-   - **Install Command**: `npm install --legacy-peer-deps --prefer-online`
+   - **Install Command**: `npm ci --legacy-peer-deps`
    - **Build Command**: `npm run vercel-build`
    - **Output Directory**: `apps/arkiol-core/.next`
 3. Add environment variables (see `apps/arkiol-core/.env.example` for full list):
@@ -78,7 +89,7 @@ NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
 
 4. Click Deploy
 
-## Step 4: Run database migration
+## Step 5: Run database migration
 
 After first deploy, run migrations against your production database:
 
@@ -88,7 +99,7 @@ DATABASE_URL='postgresql://...' npx prisma migrate deploy --schema=packages/shar
 
 Or apply `supabase-schema.sql` directly in Supabase SQL Editor (idempotent).
 
-## Step 5: Deploy worker (Railway / Fly.io)
+## Step 6: Deploy worker (Railway / Fly.io)
 
 The BullMQ worker runs as a persistent Node.js process alongside Vercel.
 
@@ -99,7 +110,7 @@ See `apps/arkiol-core/WORKER_HOSTING.md` for:
 
 Required worker env vars: `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `OPENAI_API_KEY`.
 
-## Step 6: Deploy Animation Studio backend (optional)
+## Step 7: Deploy Animation Studio backend (optional)
 
 Only needed if Animation Studio features are enabled.
 
@@ -112,7 +123,7 @@ npm run worker  # Render worker (separate process)
 
 See `apps/animation-studio/backend/.env.example` for required env vars.
 
-## Step 7: Verify
+## Step 8: Verify
 
 ```bash
 # Health check (returns capability status)
@@ -129,3 +140,13 @@ The health endpoint reports which services are configured vs unconfigured. A `pa
 2. The founder account auto-promotes to SUPER_ADMIN with unlimited credits
 3. Set up Stripe webhooks pointing to `https://your-app.vercel.app/api/billing/webhook`
 4. Configure DNS and custom domain in Vercel dashboard
+
+## Keeping the lockfile up to date
+
+When you add, remove, or update dependencies, `npm install` updates `package-lock.json` automatically. Always commit the updated lockfile alongside `package.json` changes:
+
+```bash
+npm install some-new-package --legacy-peer-deps
+git add package.json package-lock.json
+git commit -m "deps: add some-new-package"
+```
