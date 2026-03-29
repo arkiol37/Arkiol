@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
 import { prisma }            from "../../../../lib/prisma";
-import { getAuthUser, requirePermission } from "../../../../lib/auth";
+import { getRequestUser, requirePermission } from "../../../../lib/auth";
 import { withErrorHandling, dbUnavailable} from "../../../../lib/error-handling";
 import { ApiError }          from "../../../../lib/types";
 import { z }                 from "zod";
@@ -15,7 +15,7 @@ export const GET = withErrorHandling(async (
   if (!detectCapabilities().database) return dbUnavailable();
 
 
-  const user   = await getAuthUser();
+  const user   = await getRequestUser(req);
   const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { orgId: true } });
 
   const campaign = await prisma.campaign.findFirst({
@@ -59,7 +59,7 @@ export const PATCH = withErrorHandling(async (
 ) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user   = await getAuthUser();
+  const user   = await getRequestUser(req);
   requirePermission(user.role, "CREATE_CAMPAIGN");
   const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { orgId: true } });
 
@@ -99,7 +99,7 @@ export const DELETE = withErrorHandling(async (
 ) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user   = await getAuthUser();
+  const user   = await getRequestUser(req);
   requirePermission(user.role, "DELETE_CAMPAIGN");
   const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { orgId: true } });
 
