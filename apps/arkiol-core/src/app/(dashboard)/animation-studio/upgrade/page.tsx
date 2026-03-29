@@ -32,7 +32,7 @@ export default function AnimationStudioUpgradePage() {
       <div style={{ width: 72, height: 72, borderRadius: "var(--radius-2xl)", background: "rgba(79,142,247,.12)", border: "1px solid rgba(79,142,247,.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, margin: "0 auto 20px" }}>
         🎬
       </div>
-      <h1 style={{ fontSize: 30, , fontFamily: "var(--font-display)", letterSpacing: "-0.04em", margin: "0 0 12px" }}>
+      <h1 style={{ fontSize: 30, fontFamily: "var(--font-display)", letterSpacing: "-0.04em", margin: "0 0 12px" }}>
         Animation Studio
       </h1>
       <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: 36, maxWidth: 480, margin: "0 auto 36px" }}>
