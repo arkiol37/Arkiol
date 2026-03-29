@@ -45,6 +45,18 @@ export function EditorShell() {
   const [error,      setError]      = useState<string | null>(null);
   const [editorInit, setEditorInit] = useState<EditorInit | null>(null);
 
+  // On mount: if ?assetId=... is in the URL, skip generation and load directly into editor
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params  = new URLSearchParams(window.location.search);
+    const assetId = params.get("assetId");
+    if (assetId) {
+      setStep("loading");
+      loadEditorElements(assetId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
+
   // Poll until COMPLETED, then hand off to loadEditorElements
   useEffect(() => {
     if (!jobId || step !== "generating") return;
@@ -57,7 +69,7 @@ export function EditorShell() {
         setProgress(data.job.progress ?? 0);
         if (data.job.status === "COMPLETED") {
           clearInterval(iv);
-          const assetId = data.assets?.[0]?.id as string | undefined;
+          const assetId = (data.job?.result?.assets?.[0]?.id ?? data.job?.result?.assetIds?.[0]) as string | undefined;
           if (!assetId) { setError("Generation completed but no asset was returned."); setStep("brief"); return; }
           setStep("loading");
           loadEditorElements(assetId);
