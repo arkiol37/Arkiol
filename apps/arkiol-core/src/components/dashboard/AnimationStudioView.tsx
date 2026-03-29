@@ -69,7 +69,7 @@ export function AnimationStudioView() {
   useEffect(() => {
     if (tab !== "library") return;
     setLibLoad(true);
-    fetch("/api/assets?format=video&limit=24").then(r=>r.json()).then(d=>{ setAssets(d.assets??[]); setLibLoad(false); }).catch(()=>setLibLoad(false));
+    fetch("/api/assets?limit=24").then(r=>r.json()).then(d=>{ setAssets(d.assets??[]); setLibLoad(false); }).catch(()=>setLibLoad(false));
   }, [tab]);
 
   const sm = MODES.find(m => m.id === mode)!;
