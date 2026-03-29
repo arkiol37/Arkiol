@@ -80,7 +80,7 @@
     "concurrently": "^8.2.2"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x"
   },
   "optionalDependencies": {
     "canvas": "^2.11.2",
