@@ -8,7 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { detectCapabilities } from '@arkiol/shared';
-import { getServerSession } from '../../../lib/auth';
+import { getServerSession , getRequestUser } from '../../../lib/auth';
 import { prisma } from '../../../lib/prisma';
 import { logger } from '../../../lib/logger';
 import { dbUnavailable } from "../../../lib/error-handling";
@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
   if (!detectCapabilities().database) return dbUnavailable();
 
   try {
-    const session = await getServerSession();
+    const _ru = await getRequestUser(req).catch(() => null);
+  const session = _ru ? { user: { id: _ru.id, email: _ru.email, orgId: _ru.orgId, role: _ru.role } } : null;
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -79,7 +80,8 @@ export async function DELETE(req: NextRequest) {
   if (!detectCapabilities().database) return dbUnavailable();
 
   try {
-    const session = await getServerSession();
+    const _ru = await getRequestUser(req).catch(() => null);
+  const session = _ru ? { user: { id: _ru.id, email: _ru.email, orgId: _ru.orgId, role: _ru.role } } : null;
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -113,7 +115,8 @@ export async function PATCH(req: NextRequest) {
   if (!detectCapabilities().database) return dbUnavailable();
 
   try {
-    const session = await getServerSession();
+    const _ru = await getRequestUser(req).catch(() => null);
+  const session = _ru ? { user: { id: _ru.id, email: _ru.email, orgId: _ru.orgId, role: _ru.role } } : null;
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
