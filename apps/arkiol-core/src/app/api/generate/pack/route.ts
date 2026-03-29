@@ -21,7 +21,7 @@
 import "server-only";
 import { detectCapabilities } from '@arkiol/shared';
 import { NextRequest, NextResponse }         from "next/server";
-import { prisma }                            from "../../../../lib/prisma";
+import { prisma, safeTransaction }                 from "../../../../lib/prisma";
 import { getRequestUser, requirePermission } from "../../../../lib/auth";
 import { rateLimit, rateLimitHeaders }       from "../../../../lib/rate-limit";
 import { generationQueue }                   from "../../../../lib/queue";
@@ -279,7 +279,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
     const batchId = `pack_${packId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-    const { createdJobs } = await prisma.$transaction(async (tx) => {
+    const { createdJobs } = await safeTransaction(async (tx: any) => {
       await concurrencyEnforcer.assertWithinLimit(tx as any, {
         orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
       });
@@ -386,7 +386,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       const formatPlan = campaignPlan.formats.find(fp => fp.format === format) ?? campaignPlan.formats[0];
       const basePayload = campaignFormatToGenerationPayload(campaignPlan, formatPlan!, user.id, orgId);
 
-      const job = await prisma.$transaction(async (tx) => {
+      const job = await safeTransaction(async (tx: any) => {
         if (idx === 0) {
           await concurrencyEnforcer.assertWithinLimit(tx as any, {
             orgId, userId: user.id, maxConcurrency: orgLimit.maxConcurrency,
