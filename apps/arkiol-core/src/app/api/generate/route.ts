@@ -7,9 +7,10 @@ import {
   runIntelligencePipeline,
 } from '@arkiol/shared';
 import { NextRequest, NextResponse } from "next/server";
-import { prisma }           from "../../../lib/prisma";
+import { prisma, safeTransaction } from "../../../lib/prisma";
 import { getRequestUser, requirePermission } from "../../../lib/auth";
 // hasOwnerAccess removed — replaced by isFounder/effectiveRole resolved at handler entry
+import { isFounderEmail } from "../../../lib/ownerAccess";
 import { rateLimit, rateLimitHeaders }    from "../../../lib/rate-limit";
 import { generationQueue }  from "../../../lib/queue";
 import { withErrorHandling, dbUnavailable, aiUnavailable, queueUnavailable, authUnavailable } from "../../../lib/error-handling";
@@ -97,7 +98,6 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // isFounder is the single gate for all bypasses in this handler.
   // It checks the resolved email against process.env.FOUNDER_EMAIL directly —
   // no dependency on DB role, JWT role, or any cached state.
-  const { isFounderEmail } = await import("../../../lib/ownerAccess");
   const isFounder     = isFounderEmail(_userEmail);
 
   // effectiveRole: promote to SUPER_ADMIN if founder by email OR if DB role is SUPER_ADMIN.
@@ -300,11 +300,14 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // The soft middleware check above is a fast-path rejection. This transaction
   // provides the hard guarantee: count + insert are atomic, preventing races
   // where two simultaneous requests both pass the middleware check.
+  //
+  // safeTransaction handles PgBouncer incompatibility automatically — attempts
+  // interactive $transaction first, falls back to sequential if PgBouncer
+  // blocks prepared statements (missing DIRECT_URL).
   const concurrencyEnforcer = createConcurrencyEnforcer(prisma as any);
   const orgLimit = await concurrencyEnforcer.loadOrgConcurrencyLimit(orgId);
 
-  const job = await prisma.$transaction(async (tx) => {
-    // Re-enforce concurrency inside transaction (serializable) to catch races
+  const job = await safeTransaction(async (tx: any) => {
     await concurrencyEnforcer.assertWithinLimit(tx as any, {
       orgId,
       userId:         user.id,
@@ -335,10 +338,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           expectedCreditCost:   creditCost,
           maxVariationsPerRun:  dbUser.org.maxVariationsPerRun ?? 1,
           hqUpgrade:            input.hqUpgrade,
-          // Stage 8: Archetype + Preset Intelligence override
           archetypeOverride:    input.archetypeOverride ?? undefined,
           locale:               input.locale,
-          // V16: Intelligence pipeline results
           ...intelligenceMeta,
         },
       },
