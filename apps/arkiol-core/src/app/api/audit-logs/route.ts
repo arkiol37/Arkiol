@@ -2,7 +2,7 @@
 // Audit log query endpoint — ADMIN+ only.
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
-import { getAuthUser, requirePermission } from "../../../lib/auth";
+import { getRequestUser, requirePermission } from "../../../lib/auth";
 import { withErrorHandling, dbUnavailable } from "../../../lib/error-handling";
 import { prisma } from "../../../lib/prisma";
 import { ApiError } from "../../../lib/types";
@@ -10,7 +10,7 @@ import { ApiError } from "../../../lib/types";
 export const GET = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "MANAGE_BILLING");
 
   const url    = new URL(req.url);
