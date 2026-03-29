@@ -192,7 +192,7 @@ const FORMAT_DESC: Record<ArkiolCategory, string> = {
 function FormatStep({ selected, onSelect }: { selected: string; onSelect: (f: string) => void }) {
   return (
     <div style={{ padding: "40px 40px", maxWidth: 900 }}>
-      <h2 style={{ margin: "0 0 6px", fontSize: 24, , color: "var(--text-primary)", fontFamily: "var(--font-display)", letterSpacing: "-0.03em" }}>Choose a format</h2>
+      <h2 style={{ margin: "0 0 6px", fontSize: 24, color: "var(--text-primary)", fontFamily: "var(--font-display)", letterSpacing: "-0.03em" }}>Choose a format</h2>
       <p style={{ margin: "0 0 20px", color: "var(--text-muted)", fontSize: 14 }}>Pick the canvas you want the AI to design for</p>
       <div style={{ background: "var(--accent-tint)", border: "1px solid var(--border-accent)", borderRadius: "var(--radius-lg)", padding: "14px 18px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <div>
@@ -229,7 +229,7 @@ function BriefStep({ format, prompt, setPrompt, style, setStyle, vars, setVars, 
   return (
     <div style={{ padding: "40px 40px", maxWidth: 640 }}>
       <button onClick={onBack} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 13, marginBottom: 16, padding: 0 }}>← Back</button>
-      <h2 style={{ margin: "0 0 6px", fontSize: 24, , color: "var(--text-primary)", fontFamily: "var(--font-display)", letterSpacing: "-0.03em" }}>Describe your design</h2>
+      <h2 style={{ margin: "0 0 6px", fontSize: 24, color: "var(--text-primary)", fontFamily: "var(--font-display)", letterSpacing: "-0.03em" }}>Describe your design</h2>
       <p style={{ margin: "0 0 28px", color: "var(--text-muted)", fontSize: 14 }}>{CATEGORY_LABELS[format as ArkiolCategory]}</p>
 
       <label style={labelSt}>Design brief</label>
