@@ -82,7 +82,22 @@ export function GeneratePanel({ onClose, onComplete }: GeneratePanelProps) {
     }
 
     const jid = data.jobId;
-    setJobId(jid); setStatus("running");
+    setJobId(jid);
+
+    // If inline generation already completed (Vercel mode), skip polling
+    if (data.status === "COMPLETED" || data.status === "SUCCEEDED") {
+      setProgress(100);
+      setStatus("done"); setLoading(false);
+      onComplete?.(jid);
+      return;
+    }
+    if (data.status === "FAILED") {
+      setError(data.result?.error ?? data.error ?? "Generation failed");
+      setStatus("error"); setLoading(false);
+      return;
+    }
+
+    setStatus("running");
 
     pollRef.current = setInterval(async () => {
       const r   = await fetch(`/api/jobs?id=${jid}`).catch(() => null);
