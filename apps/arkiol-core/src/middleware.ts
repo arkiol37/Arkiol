@@ -11,8 +11,14 @@
 // update both places. A comment in capabilities.ts cross-references this file.
 //
 // All other files (routes, libs, server components) use detectCapabilities().
+//
+// IMPORTANT: next-auth/jwt is Edge-compatible (uses Web Crypto API internally),
+// so it can be imported at the top level. require() is NOT supported in Edge
+// Runtime and was causing silent failures that prevented auth headers from
+// being injected into downstream requests.
 // ─────────────────────────────────────────────────────────────────────────────
 import { NextResponse, NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -103,7 +109,6 @@ async function middleware(req: NextRequest): Promise<NextResponse> {
   }
 
   // ── Session token check ──────────────────────────────────────────────────
-  const { getToken } = require('next-auth/jwt');
   const token = await getToken({
     req,
     secret: process.env.NEXTAUTH_SECRET,
