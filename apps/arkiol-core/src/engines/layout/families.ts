@@ -289,6 +289,20 @@ for (const family of LAYOUT_FAMILIES) {
   }
 }
 
+// Alias extended social formats to closest canonical layout family
+const FORMAT_ALIASES: Record<string, string> = {
+  facebook_post:  "instagram_post",
+  twitter_post:   "youtube_thumbnail",
+  display_banner: "youtube_thumbnail",
+  linkedin_post:  "instagram_post",
+  tiktok_video:   "instagram_story",
+};
+for (const [alias, canonical] of Object.entries(FORMAT_ALIASES)) {
+  if (!FAMILIES_BY_FORMAT[alias] && FAMILIES_BY_FORMAT[canonical]) {
+    FAMILIES_BY_FORMAT[alias] = FAMILIES_BY_FORMAT[canonical];
+  }
+}
+
 // ── Selector ──────────────────────────────────────────────────────────────────
 export interface SelectionContext {
   format:       string;
