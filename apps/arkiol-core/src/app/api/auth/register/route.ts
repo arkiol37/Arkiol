@@ -1,7 +1,7 @@
 // src/app/api/auth/register/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities }        from "@arkiol/shared";
-import { prisma }                    from "../../../../lib/prisma";
+import { prisma, safeTransaction }     from "../../../../lib/prisma";
 import { hashPassword, validatePasswordStrength } from "../../../../lib/auth";
 import { rateLimit }                 from "../../../../lib/rate-limit";
 import { z }                         from "zod";
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
   // ── Create org + user in a transaction ────────────────────────────────────
   let org: any, user: any;
   try {
-    [org, user] = await prisma.$transaction(async (tx: any) => {
+    [org, user] = await safeTransaction(async (tx: any) => {
       // Create org — start with fields that definitely exist in all migrations
       const newOrg = await tx.org.create({
         data: {
