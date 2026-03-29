@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
-import { getAuthUser }   from "../../../lib/auth";
+import { getRequestUser } from "../../../lib/auth";
 import { rateLimit }     from "../../../lib/rate-limit";
 import { withErrorHandling, aiUnavailable } from "../../../lib/error-handling";
 import { ApiError }      from "../../../lib/types";
@@ -48,7 +48,7 @@ const PLATFORM_INSTRUCTIONS: Record<string, string> = {
 export const POST = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().ai) return aiUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
 
   const rl = await rateLimit(user.id, "generate");
   if (!rl.success) {
