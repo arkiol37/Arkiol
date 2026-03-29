@@ -2,7 +2,7 @@
 // POST /api/brand/analyze — uses GPT-4o to extract brand intelligence from a text description
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
-import { getAuthUser, requirePermission } from "../../../../lib/auth";
+import { getRequestUser, requirePermission } from "../../../../lib/auth";
 import { withErrorHandling }  from "../../../../lib/error-handling";
 import { rateLimit }          from "../../../../lib/rate-limit";
 import { chatJSON }           from "../../../../lib/openai";
@@ -17,7 +17,7 @@ const AnalyzeSchema = z.object({
 export const POST = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "EDIT_BRAND");
 
   const rl = await rateLimit(user.id, "generate");
