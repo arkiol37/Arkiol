@@ -7,8 +7,8 @@
 
 import 'server-only';
 import { detectCapabilities } from '@arkiol/shared';
+import { getRequestUser } from '../../../lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
 import { authOptions }      from '../../../../../lib/auth';
 import { prisma }           from '../../../../../lib/prisma';
 import { rateLimit }        from '../../../../../lib/rate-limit';
@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
   if (!detectCapabilities().billing) return billingUnavailable();
 
   try {
-    const session = await getServerSession(authOptions);
+    const _ru = await getRequestUser(req).catch(() => null);
+  const session = _ru ? { user: { id: _ru.id, email: _ru.email, orgId: _ru.orgId, role: _ru.role } } : null;
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
