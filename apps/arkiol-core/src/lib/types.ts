@@ -13,18 +13,28 @@ export const FORMAT_DIMS: Record<string, { width: number; height: number }> = {
   business_card:      { width: 1050, height: 600  },
   resume:             { width: 2550, height: 3300 },
   logo:               { width: 1000, height: 1000 },
+  // Animation Studio + extended formats
+  facebook_post:      { width: 1200, height: 630  },
+  twitter_post:       { width: 1600, height: 900  },
+  display_banner:     { width: 728,  height: 90   },
+  linkedin_post:      { width: 1200, height: 627  },
+  tiktok_video:       { width: 1080, height: 1920 },
 };
 
 // ── Category types ────────────────────────────────────────────────────────────
 export type ArkiolCategory =
   | "instagram_post" | "instagram_story" | "youtube_thumbnail"
   | "flyer" | "poster" | "presentation_slide"
-  | "business_card" | "resume" | "logo";
+  | "business_card" | "resume" | "logo"
+  | "facebook_post" | "twitter_post" | "display_banner"
+  | "linkedin_post" | "tiktok_video";
 
 export const ARKIOL_CATEGORIES: ArkiolCategory[] = [
   "instagram_post", "instagram_story", "youtube_thumbnail",
   "flyer", "poster", "presentation_slide",
   "business_card", "resume", "logo",
+  "facebook_post", "twitter_post", "display_banner",
+  "linkedin_post", "tiktok_video",
 ];
 
 export const CATEGORY_LABELS: Record<ArkiolCategory, string> = {
@@ -37,6 +47,11 @@ export const CATEGORY_LABELS: Record<ArkiolCategory, string> = {
   business_card:      "Business Card",
   resume:             "Resume",
   logo:               "Logo",
+  facebook_post:      "Facebook Post",
+  twitter_post:       "Twitter / X Post",
+  display_banner:     "Display Banner",
+  linkedin_post:      "LinkedIn Post",
+  tiktok_video:       "TikTok Video",
 };
 
 export function getCategoryLabel(format: string): string {
@@ -66,6 +81,11 @@ export const EXPORT_PROFILES: Record<ArkiolCategory, ExportProfile> = {
   business_card:      { supportsSvg: true,  supportsPng: true,  supportsGif: false, defaultPngScale: 2 },
   resume:             { supportsSvg: false, supportsPng: true,  supportsGif: false, defaultPngScale: 1 },
   logo:               { supportsSvg: true,  supportsPng: true,  supportsGif: false, defaultPngScale: 2 },
+  facebook_post:      { supportsSvg: true,  supportsPng: true,  supportsGif: true,  defaultPngScale: 1 },
+  twitter_post:       { supportsSvg: true,  supportsPng: true,  supportsGif: true,  defaultPngScale: 1 },
+  display_banner:     { supportsSvg: true,  supportsPng: true,  supportsGif: false, defaultPngScale: 1 },
+  linkedin_post:      { supportsSvg: true,  supportsPng: true,  supportsGif: false, defaultPngScale: 1 },
+  tiktok_video:       { supportsSvg: true,  supportsPng: true,  supportsGif: true,  defaultPngScale: 1 },
 };
 
 // BUG-001 FIX: Single authoritative set of formats that actually produce GIF variants.
