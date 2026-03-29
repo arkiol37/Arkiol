@@ -100,7 +100,7 @@ export default function OnboardingPage() {
       {/* Arkiol wordmark */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 48, position: "relative" }}>
         <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(145deg, var(--accent), #9b5de5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#fff", boxShadow: "0 0 18px var(--accent-glow)" }}>A</div>
-        <span style={{ , fontSize: 18, letterSpacing: "-0.05em", fontFamily: "var(--font-display)" }}>Arkiol</span>
+        <span style={{ fontSize: 18, letterSpacing: "-0.05em", fontFamily: "var(--font-display)" }}>Arkiol</span>
       </div>
 
       {/* Step indicators */}
@@ -136,7 +136,7 @@ export default function OnboardingPage() {
         <div className="ak-fade-in" style={card}>
           <div style={{ textAlign: "center", marginBottom: 32 }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>👋</div>
-            <h2 style={{ fontSize: 26, , letterSpacing: "-0.04em", margin: "0 0 10px", fontFamily: "var(--font-display)" }}>
+            <h2 style={{ fontSize: 26, letterSpacing: "-0.04em", margin: "0 0 10px", fontFamily: "var(--font-display)" }}>
               Welcome to Arkiol
             </h2>
             <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.65, maxWidth: 440, margin: "0 auto" }}>
@@ -193,7 +193,7 @@ export default function OnboardingPage() {
       {/* ── Step 1: Brand Setup ── */}
       {step === 1 && (
         <div className="ak-fade-in" style={card}>
-          <h2 style={{ fontSize: 24, , letterSpacing: "-0.04em", margin: "0 0 8px", fontFamily: "var(--font-display)" }}>Brand setup</h2>
+          <h2 style={{ fontSize: 24, letterSpacing: "-0.04em", margin: "0 0 8px", fontFamily: "var(--font-display)" }}>Brand setup</h2>
           <p style={{ color: "var(--text-secondary)", marginBottom: 28, fontSize: 13.5, lineHeight: 1.6 }}>
             Give your brand a name and choose a colour palette. Arkiol will use this across every generated design. You can change it later from Brand Settings.
           </p>
@@ -251,7 +251,7 @@ export default function OnboardingPage() {
       {/* ── Step 2: Enter Prompt (preview the generate flow) ── */}
       {step === 2 && (
         <div className="ak-fade-in" style={card}>
-          <h2 style={{ fontSize: 24, , letterSpacing: "-0.04em", margin: "0 0 8px", fontFamily: "var(--font-display)" }}>
+          <h2 style={{ fontSize: 24, letterSpacing: "-0.04em", margin: "0 0 8px", fontFamily: "var(--font-display)" }}>
             Write your first prompt
           </h2>
           <p style={{ color: "var(--text-secondary)", marginBottom: 24, fontSize: 13.5, lineHeight: 1.6 }}>
@@ -312,7 +312,7 @@ export default function OnboardingPage() {
       {step === 3 && (
         <div className="ak-fade-in" style={{ ...card, textAlign: "center" }}>
           <div style={{ fontSize: 56, marginBottom: 20 }}>🚀</div>
-          <h2 style={{ fontSize: 26, , letterSpacing: "-0.04em", margin: "0 0 12px", fontFamily: "var(--font-display)" }}>
+          <h2 style={{ fontSize: 26, letterSpacing: "-0.04em", margin: "0 0 12px", fontFamily: "var(--font-display)" }}>
             You're all set!
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.7, maxWidth: 400, margin: "0 auto 32px" }}>
