@@ -3,6 +3,8 @@
 // Server Component (Node.js runtime): may use detectCapabilities().
 import { redirect }           from 'next/navigation';
 import { detectCapabilities } from '@arkiol/shared';
+import { getServerSession }   from 'next-auth';
+import { authOptions }        from '../lib/auth';
 import LandingPage            from '../components/marketing/LandingPage';
 import type { Metadata }      from 'next';
 
@@ -17,8 +19,6 @@ export default async function RootPage() {
   // Uses the centralized capability system — no raw process.env here.
   if (detectCapabilities().auth && detectCapabilities().database) {
     try {
-      const { getServerSession } = require('next-auth');
-      const { authOptions }      = require('../lib/auth');
       const session = await getServerSession(authOptions).catch(() => null);
       if (session?.user) redirect('/dashboard');
     } catch { /* auth unavailable — fall through to landing */ }
