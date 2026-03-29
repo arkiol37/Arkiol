@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
 import { prisma }            from "../../../lib/prisma";
-import { getAuthUser, requirePermission } from "../../../lib/auth";
+import { getRequestUser, requirePermission } from "../../../lib/auth";
 import { withErrorHandling, dbUnavailable } from "../../../lib/error-handling";
 import { ApiError }          from "../../../lib/types";
 import { z }                 from "zod";
@@ -25,7 +25,7 @@ const UpdateBrandSchema = CreateBrandSchema.partial();
 export const GET = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user   = await getAuthUser();
+  const user   = await getRequestUser(req);
   const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { orgId: true } });
   if (!dbUser?.orgId) throw new ApiError(403, "No organization");
 
@@ -44,7 +44,7 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
 export const POST = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "EDIT_BRAND");
 
   const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { orgId: true } });
@@ -78,7 +78,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 export const PATCH = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "EDIT_BRAND");
 
   const url     = new URL(req.url);
@@ -107,7 +107,7 @@ export const PATCH = withErrorHandling(async (req: NextRequest) => {
 export const DELETE = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "EDIT_BRAND");
 
   const url     = new URL(req.url);
