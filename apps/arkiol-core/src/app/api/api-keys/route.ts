@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { detectCapabilities } from '@arkiol/shared';
 import { prisma }            from "../../../lib/prisma";
-import { getAuthUser, requirePermission } from "../../../lib/auth";
+import { getRequestUser, requirePermission } from "../../../lib/auth";
 import { withErrorHandling, dbUnavailable } from "../../../lib/error-handling";
 import { ApiError }          from "../../../lib/types";
 import { randomBytes, createHash } from "crypto";
@@ -32,7 +32,7 @@ function expiresAtDate(expiresIn: string): Date | null {
 export const GET = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "MANAGE_API_KEYS");
 
   const keys = await prisma.apiKey.findMany({
@@ -57,7 +57,7 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
 export const POST = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user = await getAuthUser();
+  const user = await getRequestUser(req);
   requirePermission(user.role, "MANAGE_API_KEYS");
 
   const rl = await rateLimit(user.id, "api");
@@ -101,7 +101,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 export const DELETE = withErrorHandling(async (req: NextRequest) => {
   if (!detectCapabilities().database) return dbUnavailable();
 
-  const user  = await getAuthUser();
+  const user  = await getRequestUser(req);
   requirePermission(user.role, "MANAGE_API_KEYS");
   const keyId = new URL(req.url).searchParams.get("id");
   if (!keyId) throw new ApiError(400, "Key ID required (?id=...)");
