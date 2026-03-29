@@ -8,7 +8,6 @@ on:
 
 env:
   NODE_VERSION: '20'
-  # Stub env vars so prisma generate + next build succeed without real services
   DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci'
   NEXTAUTH_SECRET: 'ci-placeholder-secret-at-least-32-chars-long!!'
   NEXTAUTH_URL: 'http://localhost:3000'
@@ -25,7 +24,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - uses: actions/cache/save@v4
         with:
           path: |
